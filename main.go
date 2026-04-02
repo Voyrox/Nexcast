@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+var startTime = time.Now()
+
 func getenv(key, fallback string) string {
 	v := os.Getenv(key)
 	if v == "" {
@@ -158,6 +160,15 @@ func main() {
 	cooldownStr := getenv("COOLDOWN", "60s")
 	scaleUpStep := getenvInt("SCALE_UP_STEP", 2)
 	scaleDownStep := getenvInt("SCALE_DOWN_STEP", 1)
+	puppetsStr := getenv("PUPPETS", "")
+
+	var puppets []string
+	if puppetsStr != "" {
+		puppets = strings.Split(puppetsStr, ",")
+		for i := range puppets {
+			puppets[i] = strings.TrimSpace(puppets[i])
+		}
+	}
 
 	interval, err := time.ParseDuration(checkInterval)
 	if err != nil {
