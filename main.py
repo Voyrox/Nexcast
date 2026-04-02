@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, models
@@ -89,3 +91,8 @@ days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sun
 print("Predicted vs Actual (Monday to Sunday):")
 for day, predicted, actual in zip(days, pred[0], y_test[0]):
     print(f"{day}: predicted={predicted:.2f}, actual={actual:.2f}")
+
+
+os.makedirs("model", exist_ok=True)
+model.export("model/demand_predictor")
+print("SavedModel exported to model/demand_predictor")
