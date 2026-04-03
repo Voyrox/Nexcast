@@ -21,7 +21,16 @@ pip install -r requirements.txt
 
 ## Docker Example
 ```bash
-docker build -t example-server:latest .
+docker build -t example-server:latest ./example
+```
+
+## Kubernetes Example
+Build the example image, then apply the manifests from `example/`:
+
+```bash
+docker build -t example-server:latest ./example
+kubectl apply -f example/deployment.yaml
+kubectl apply -f example/service.yaml
 ```
 
 ## API
