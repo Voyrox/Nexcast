@@ -1,0 +1,22 @@
+services:
+  - name: api
+    system_id: 0
+    image_name: example-server:latest
+    container_prefix: nextcast-api
+    port_base: 18080
+    min_replicas: 1
+    max_replicas: 10
+    target_per_node: 65.0
+    scale_up_step: 2
+    scale_down_step: 1
+
+  - name: worker
+    system_id: 1
+    image_name: example-server:latest
+    container_prefix: nextcast-worker
+    port_base: 19080
+    min_replicas: 1
+    max_replicas: 8
+    target_per_node: 70.0
+    scale_up_step: 1
+    scale_down_step: 1
