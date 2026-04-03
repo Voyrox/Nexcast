@@ -2,8 +2,8 @@ package scaler
 
 import (
 	"fmt"
-	"log"
 	"nextcast/src/docker"
+	"nextcast/src/logx"
 	"sort"
 	"sync"
 	"time"
@@ -137,7 +137,7 @@ func (a *App) evaluateLeadership() (string, time.Time, bool) {
 
 		info, err := a.peerClient.FetchNodeInfo(addr)
 		if err != nil {
-			log.Printf("peer %s unavailable: %v", addr, err)
+			logx.Warnf("peer %s unavailable: %v", addr, err)
 			return "", time.Time{}, false
 		}
 		views = append(views, peerView{Addr: addr, StartTime: info.StartTime})
@@ -214,7 +214,7 @@ func (a *App) desiredReplicas(aggregate clusterServiceAggregate) int {
 
 	response, err := callPredictor(a.config.PredictorURL, request)
 	if err != nil {
-		log.Printf("predictor failed for %s: %v", service.Name, err)
+		logx.Errorf("predictor failed for %s: %v", service.Name, err)
 		return aggregate.TotalReplicas
 	}
 
@@ -229,11 +229,11 @@ func (a *App) desiredReplicas(aggregate clusterServiceAggregate) int {
 	lastScaleTime := a.cooldowns[service.Name]
 	a.mu.RUnlock()
 	if desired != aggregate.TotalReplicas && !lastScaleTime.IsZero() && time.Since(lastScaleTime) < a.config.Cooldown {
-		log.Printf("cooldown active for service=%s, skipping scale", service.Name)
+		logx.Warnf("cooldown active for service=%s, skipping scale", service.Name)
 		return aggregate.TotalReplicas
 	}
 
-	log.Printf("service=%s current=%d cpu=%.2f mem=%.2f predicted_peak=%.2f blended_peak=%.2f recommended=%d adjusted=%d",
+	logx.Eventf("service=%s current=%d cpu=%.2f mem=%.2f predicted_peak=%.2f blended_peak=%.2f recommended=%d adjusted=%d",
 		service.Name,
 		aggregate.TotalReplicas,
 		aggregate.WeightedCPU,
@@ -300,7 +300,7 @@ func (a *App) collectClusterStates() ([]ServicesStateResponse, bool) {
 		if addr == a.config.SelfAddr {
 			localState, err := a.ServicesState()
 			if err != nil {
-				log.Printf("failed to read local services state: %v", err)
+				logx.Errorf("failed to read local services state: %v", err)
 				return nil, false
 			}
 			states = append(states, localState)
@@ -309,7 +309,7 @@ func (a *App) collectClusterStates() ([]ServicesStateResponse, bool) {
 
 		state, err := a.peerClient.FetchServicesState(addr)
 		if err != nil {
-			log.Printf("failed to read services state from %s: %v", addr, err)
+			logx.Errorf("failed to read services state from %s: %v", addr, err)
 			return nil, false
 		}
 		states = append(states, state)
@@ -424,7 +424,7 @@ func (a *App) applyTargets(commandsByNode map[string][]ServiceScaleCommand) bool
 			err = a.peerClient.PostScaleCommand(addr, request)
 		}
 		if err != nil {
-			log.Printf("failed to apply targets on %s: %v", addr, err)
+			logx.Errorf("failed to apply targets on %s: %v", addr, err)
 			return false
 		}
 	}
@@ -444,17 +444,17 @@ func (a *App) Reconcile() {
 	leaderAddr, leaderStart, ready := a.evaluateLeadership()
 	a.setLeadership(leaderAddr, leaderStart, ready)
 	if !ready {
-		log.Printf("cluster visibility incomplete, skipping scaling")
+		logx.Warnf("cluster visibility incomplete, skipping scaling")
 		return
 	}
 	if leaderAddr != a.config.SelfAddr {
-		log.Printf("follower mode, leader=%s", leaderAddr)
+		logx.Infof("follower mode, leader=%s", leaderAddr)
 		return
 	}
 
 	clusterStates, ok := a.collectClusterStates()
 	if !ok {
-		log.Printf("failed to collect full cluster state, skipping scaling")
+		logx.Warnf("failed to collect full cluster state, skipping scaling")
 		return
 	}
 
@@ -475,6 +475,6 @@ func (a *App) Reconcile() {
 	}
 
 	if !a.applyTargets(commandsByNode) {
-		log.Printf("no scaling actions applied")
+		logx.Infof("no scaling actions applied")
 	}
 }

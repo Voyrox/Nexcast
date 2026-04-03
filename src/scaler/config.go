@@ -57,11 +57,11 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 	if config.SelfAddr == "" {
 		return RuntimeConfig{}, fmt.Errorf("SELF_ADDR is required")
 	}
-	if len(config.PeerAddresses) == 0 {
-		return RuntimeConfig{}, fmt.Errorf("PUPPETS must contain at least one peer address")
-	}
 	if config.ClusterToken == "" {
 		return RuntimeConfig{}, fmt.Errorf("CLUSTER_TOKEN is required")
+	}
+	if len(config.PeerAddresses) == 0 {
+		config.PeerAddresses = []string{config.SelfAddr}
 	}
 
 	selfFound := false

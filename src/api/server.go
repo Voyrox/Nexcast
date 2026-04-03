@@ -2,8 +2,8 @@ package api
 
 import (
 	"encoding/json"
-	"log"
 	"net/http"
+	"nextcast/src/logx"
 	"nextcast/src/scaler"
 	"time"
 )
@@ -89,9 +89,9 @@ func (s *Server) Start() {
 	}
 
 	go func() {
-		log.Printf("cluster API listening on %s", s.handler.SelfAddr())
+		logx.Infof("cluster API listening on %s", s.handler.SelfAddr())
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("cluster API failed: %v", err)
+			logx.Fatalf("cluster API failed: %v", err)
 		}
 	}()
 }
