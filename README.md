@@ -234,11 +234,9 @@ See `example/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for an in-
 
 ### API
 - `predictor.py` is the TensorFlow + FastAPI service. It loads the SavedModel, exposes `/predict` and `/scale`, and returns demand and replica recommendations.
-- `src/` contains the Go autoscaler.
 - `src/scaler/` contains the reconcile loop, leader logic, scaling policy, cooldowns, and shared backend logic.
 - `src/api/` contains the peer-to-peer HTTP API used by autoscaler nodes.
 - `src/docker/` contains Docker-specific container listing, stats, and local scaling operations.
 - `src/kubernetes/` contains Kubernetes-specific Deployment state reads, metrics reads, and replica updates.
 - `src/logx/` contains logging helpers.
-- `example/` contains the sample app, Docker image example, and Kubernetes manifests.
 - `model/` is the default location for the TensorFlow SavedModel loaded by `predictor.py`.
