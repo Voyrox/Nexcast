@@ -53,3 +53,5 @@ To test it locally:
 ```bash
 kubectl port-forward service/nextcast-example 8080:80
 ```
+
+To run Nexcast itself in Kubernetes peer mode, use `example/services-kubernetes.yaml` for the inventory data and `example/nexcast-k8s.yaml` as a starting point for the peer controller manifests.

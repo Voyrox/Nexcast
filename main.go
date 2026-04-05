@@ -2,6 +2,7 @@ package main
 
 import (
 	"nextcast/src/api"
+	"nextcast/src/kubernetes"
 	"nextcast/src/logx"
 	"nextcast/src/scaler"
 	"time"
@@ -21,17 +22,30 @@ func main() {
 		logx.Fatalf("failed to load runtime config: %v", err)
 	}
 
-	inventory, err := scaler.LoadServicesInventory(config.ServicesFile)
+	inventory, err := scaler.LoadServicesInventory(config.ServicesFile, config.Backend)
 	if err != nil {
 		logx.Fatalf("failed to load services inventory: %v", err)
 	}
 
+	var backend scaler.Backend
+	switch config.Backend {
+	case scaler.BackendDockerCluster:
+		backend = scaler.NewDockerBackend()
+	case scaler.BackendKubernetesPeer:
+		backend, err = kubernetes.NewBackend(config)
+		if err != nil {
+			logx.Fatalf("failed to initialize kubernetes backend: %v", err)
+		}
+	default:
+		logx.Fatalf("unsupported backend: %s", config.Backend)
+	}
+
 	peerClient := api.NewPeerClient(config.ClusterToken)
-	app := scaler.NewApp(config, inventory, time.Now().UTC(), peerClient)
+	app := scaler.NewApp(config, inventory, backend, time.Now().UTC(), peerClient)
 	server := api.NewServer(app)
 	server.Start()
 
-	logx.Successf("autoscaler started self=%s peers=%d services=%d", config.SelfAddr, len(config.PeerAddresses), len(inventory.Services))
+	logx.Successf("autoscaler started backend=%s self=%s peers=%d services=%d", config.Backend, config.SelfAddr, len(config.PeerAddresses), len(inventory.Services))
 	for {
 		app.Reconcile()
 		time.Sleep(app.CheckInterval())

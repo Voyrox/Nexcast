@@ -33,7 +33,39 @@ func parsePeerAddresses(raw string) []string {
 	return peers
 }
 
+func parseBackendMode(raw string) (BackendMode, error) {
+	switch strings.TrimSpace(raw) {
+	case "", string(BackendDockerCluster):
+		return BackendDockerCluster, nil
+	case string(BackendKubernetesPeer):
+		return BackendKubernetesPeer, nil
+	default:
+		return "", fmt.Errorf("invalid BACKEND: %s", raw)
+	}
+}
+
+func parseMetricsPolicy(raw string) (MetricsFallbackPolicy, error) {
+	switch strings.TrimSpace(raw) {
+	case "", string(MetricsFallbackScaleUpOnly):
+		return MetricsFallbackScaleUpOnly, nil
+	case string(MetricsFallbackAllowBoth):
+		return MetricsFallbackAllowBoth, nil
+	default:
+		return "", fmt.Errorf("invalid METRICS_FALLBACK_POLICY: %s", raw)
+	}
+}
+
 func LoadRuntimeConfig() (RuntimeConfig, error) {
+	backend, err := parseBackendMode(getenv("BACKEND", string(BackendDockerCluster)))
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+
+	metricsPolicy, err := parseMetricsPolicy(getenv("METRICS_FALLBACK_POLICY", string(MetricsFallbackScaleUpOnly)))
+	if err != nil {
+		return RuntimeConfig{}, err
+	}
+
 	interval, err := time.ParseDuration(getenv("CHECK_INTERVAL", "20s"))
 	if err != nil {
 		return RuntimeConfig{}, fmt.Errorf("invalid CHECK_INTERVAL: %w", err)
@@ -45,11 +77,14 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 	}
 
 	config := RuntimeConfig{
+		Backend:       backend,
 		SelfAddr:      getenv("SELF_ADDR", ""),
 		PeerAddresses: parsePeerAddresses(getenv("PUPPETS", "")),
 		ServicesFile:  getenv("SERVICES_FILE", "services.yaml"),
 		ClusterToken:  getenv("CLUSTER_TOKEN", ""),
 		PredictorURL:  getenv("PREDICTOR_URL", "http://localhost:8000/scale"),
+		K8SNamespace:  getenv("K8S_NAMESPACE", "default"),
+		MetricsPolicy: metricsPolicy,
 		CheckInterval: interval,
 		Cooldown:      cooldown,
 	}

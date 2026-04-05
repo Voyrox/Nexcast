@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: nexcast
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: nexcast
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: nexcast
+subjects:
+  - kind: ServiceAccount
+    name: nexcast
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: nexcast
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nexcast-services
+data:
+  services.yaml: |
+    services:
+      - name: api
+        system_id: 0
+        namespace: default
+        deployment_name: nextcast-example
+        min_replicas: 1
+        max_replicas: 10
+        target_per_node: 65.0
+        scale_up_step: 2
+        scale_down_step: 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nexcast-peers
+spec:
+  clusterIP: None
+  selector:
+    app: nexcast
+  ports:
+    - name: http
+      port: 8081
+      targetPort: 8081
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: nexcast
+spec:
+  serviceName: nexcast-peers
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nexcast
+  template:
+    metadata:
+      labels:
+        app: nexcast
+    spec:
+      serviceAccountName: nexcast
+      containers:
+        - name: nexcast
+          image: nexcast:latest
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/sh", "-c"]
+          args:
+            - >-
+              export SELF_ADDR="${POD_NAME}.nexcast-peers.${POD_NAMESPACE}.svc.cluster.local:8081" &&
+              /app
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: BACKEND
+              value: kubernetes-peer
+            - name: PREDICTOR_URL
+              value: http://predictor.default.svc.cluster.local:8000/scale
+            - name: PUPPETS
+              value: nexcast-0.nexcast-peers.default.svc.cluster.local:8081,nexcast-1.nexcast-peers.default.svc.cluster.local:8081,nexcast-2.nexcast-peers.default.svc.cluster.local:8081
+            - name: CLUSTER_TOKEN
+              value: change-me
+            - name: SERVICES_FILE
+              value: /etc/nexcast/services.yaml
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: METRICS_FALLBACK_POLICY
+              value: scale-up-only
+            - name: CHECK_INTERVAL
+              value: 20s
+            - name: COOLDOWN
+              value: 60s
+          ports:
+            - containerPort: 8081
+              name: http
+          volumeMounts:
+            - name: services
+              mountPath: /etc/nexcast
+      volumes:
+        - name: services
+          configMap:
+            name: nexcast-services

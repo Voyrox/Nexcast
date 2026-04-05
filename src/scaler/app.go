@@ -2,7 +2,6 @@ package scaler
 
 import (
 	"fmt"
-	"nextcast/src/docker"
 	"nextcast/src/logx"
 	"sort"
 	"sync"
@@ -26,11 +25,13 @@ type clusterServiceAggregate struct {
 	TotalReplicas int
 	WeightedCPU   float64
 	WeightedMem   float64
+	MetricsReady  bool
 }
 
 type App struct {
 	config       RuntimeConfig
 	inventory    ServicesInventory
+	backend      Backend
 	startTime    time.Time
 	peerClient   peerClient
 	cooldowns    map[string]time.Time
@@ -41,10 +42,11 @@ type App struct {
 	clusterReady bool
 }
 
-func NewApp(config RuntimeConfig, inventory ServicesInventory, startTime time.Time, client peerClient) *App {
+func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time, client peerClient) *App {
 	return &App{
 		config:     config,
 		inventory:  inventory,
+		backend:    backend,
 		startTime:  startTime.UTC(),
 		peerClient: client,
 		cooldowns:  make(map[string]time.Time),
@@ -99,7 +101,7 @@ func (a *App) NodeInfo() NodeInfoResponse {
 }
 
 func (a *App) ServicesState() (ServicesStateResponse, error) {
-	services, err := GetLocalServicesState(a.inventory)
+	services, err := GetLocalServicesState(a.inventory, a.backend)
 	if err != nil {
 		return ServicesStateResponse{}, err
 	}
@@ -162,7 +164,7 @@ func findServiceState(states []LocalServiceState, name string) LocalServiceState
 	return LocalServiceState{ServiceName: name}
 }
 
-func aggregateService(service ServiceConfig, clusterStates []ServicesStateResponse) clusterServiceAggregate {
+func aggregateDockerService(service ServiceConfig, clusterStates []ServicesStateResponse) clusterServiceAggregate {
 	aggregate := clusterServiceAggregate{
 		Service:       service,
 		CurrentByNode: make(map[string]LocalServiceState, len(clusterStates)),
@@ -170,20 +172,78 @@ func aggregateService(service ServiceConfig, clusterStates []ServicesStateRespon
 
 	weightedCPUSum := 0.0
 	weightedMemSum := 0.0
+	metricsReady := false
 	for _, nodeState := range clusterStates {
 		state := findServiceState(nodeState.Services, service.Name)
 		aggregate.CurrentByNode[nodeState.SelfAddr] = state
 		aggregate.TotalReplicas += state.CurrentReplicas
 		weightedCPUSum += state.AvgCPU * float64(state.CurrentReplicas)
 		weightedMemSum += state.AvgMem * float64(state.CurrentReplicas)
+		metricsReady = metricsReady || state.MetricsReady
 	}
 
 	if aggregate.TotalReplicas > 0 {
 		aggregate.WeightedCPU = weightedCPUSum / float64(aggregate.TotalReplicas)
 		aggregate.WeightedMem = weightedMemSum / float64(aggregate.TotalReplicas)
 	}
+	aggregate.MetricsReady = metricsReady
 
 	return aggregate
+}
+
+func aggregateKubernetesService(service ServiceConfig, clusterStates []ServicesStateResponse) (clusterServiceAggregate, bool) {
+	aggregate := clusterServiceAggregate{
+		Service:       service,
+		CurrentByNode: make(map[string]LocalServiceState, len(clusterStates)),
+	}
+
+	var baseline *LocalServiceState
+	metricsCount := 0
+	for _, nodeState := range clusterStates {
+		state := findServiceState(nodeState.Services, service.Name)
+		aggregate.CurrentByNode[nodeState.SelfAddr] = state
+		if baseline == nil {
+			copyState := state
+			baseline = &copyState
+			aggregate.TotalReplicas = state.CurrentReplicas
+			continue
+		}
+		if state.CurrentReplicas != baseline.CurrentReplicas {
+			logx.Warnf("inconsistent kubernetes replicas for service=%s peer=%s current=%d baseline=%d", service.Name, nodeState.SelfAddr, state.CurrentReplicas, baseline.CurrentReplicas)
+			return clusterServiceAggregate{}, false
+		}
+	}
+
+	if baseline == nil {
+		return aggregate, true
+	}
+
+	for _, state := range aggregate.CurrentByNode {
+		if !state.MetricsReady {
+			continue
+		}
+		aggregate.WeightedCPU += state.AvgCPU
+		aggregate.WeightedMem += state.AvgMem
+		metricsCount++
+	}
+	if metricsCount > 0 {
+		aggregate.WeightedCPU /= float64(metricsCount)
+		aggregate.WeightedMem /= float64(metricsCount)
+		aggregate.MetricsReady = true
+	} else {
+		aggregate.WeightedCPU = baseline.AvgCPU
+		aggregate.WeightedMem = baseline.AvgMem
+		aggregate.MetricsReady = baseline.MetricsReady
+	}
+
+	return aggregate, true
+}
+
+func (a *App) aggregateService(service ServiceConfig, clusterStates []ServicesStateResponse) (clusterServiceAggregate, bool) {
+	if a.backend.Mode() == BackendKubernetesPeer {
+		return aggregateKubernetesService(service, clusterStates)
+	}
+	return aggregateDockerService(service, clusterStates), true
 }
 
 func clampInt(v, minV, maxV int) int {
@@ -225,6 +285,11 @@ func (a *App) desiredReplicas(aggregate clusterServiceAggregate) int {
 		desired = clampInt(aggregate.TotalReplicas-service.ScaleDownStep, service.MinReplicas, service.MaxReplicas)
 	}
 
+	if !aggregate.MetricsReady && a.config.Backend == BackendKubernetesPeer && a.config.MetricsPolicy == MetricsFallbackScaleUpOnly && desired < aggregate.TotalReplicas {
+		logx.Warnf("metrics unavailable for service=%s, holding steady instead of scaling down", service.Name)
+		desired = aggregate.TotalReplicas
+	}
+
 	a.mu.RLock()
 	lastScaleTime := a.cooldowns[service.Name]
 	a.mu.RUnlock()
@@ -233,11 +298,12 @@ func (a *App) desiredReplicas(aggregate clusterServiceAggregate) int {
 		return aggregate.TotalReplicas
 	}
 
-	logx.Eventf("service=%s current=%d cpu=%.2f mem=%.2f predicted_peak=%.2f blended_peak=%.2f recommended=%d adjusted=%d",
+	logx.Eventf("service=%s current=%d cpu=%.2f mem=%.2f metrics_ready=%t predicted_peak=%.2f blended_peak=%.2f recommended=%d adjusted=%d",
 		service.Name,
 		aggregate.TotalReplicas,
 		aggregate.WeightedCPU,
 		aggregate.WeightedMem,
+		aggregate.MetricsReady,
 		response.PredictedPeak,
 		response.BlendedPeak,
 		response.RecommendedReplicas,
@@ -335,7 +401,7 @@ func (a *App) applyScaleCommands(commands []ServiceScaleCommand) ScaleCommandRes
 			results = append(results, result)
 			continue
 		}
-		if err := ensureReplicaCount(service, command.DesiredReplicas); err != nil {
+		if err := a.backend.EnsureReplicaCount(service, command.DesiredReplicas); err != nil {
 			result.Error = err.Error()
 		}
 		results = append(results, result)
@@ -344,46 +410,29 @@ func (a *App) applyScaleCommands(commands []ServiceScaleCommand) ScaleCommandRes
 	return ScaleCommandResponse{Results: results}
 }
 
-func ensureReplicaCount(service ServiceConfig, desired int) error {
-	existing, err := docker.ListManagedContainers(service.ContainerPrefix)
-	if err != nil {
-		return err
+func (a *App) applyKubernetesTargets(commands []ServiceScaleCommand) bool {
+	if len(commands) == 0 {
+		return false
 	}
 
-	current := len(existing)
-	if desired == current {
-		return nil
-	}
-
-	if desired > current {
-		toAdd := desired - current
-		for i := 0; i < toAdd; i++ {
-			existing, err = docker.ListManagedContainers(service.ContainerPrefix)
-			if err != nil {
-				return err
-			}
-			if err := docker.StartContainer(service.ImageName, service.ContainerPrefix, service.PortBase, existing); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	toRemove := current - desired
-	for i := 0; i < toRemove; i++ {
-		existing, err = docker.ListManagedContainers(service.ContainerPrefix)
-		if err != nil {
-			return err
-		}
-		if err := docker.StopOneContainer(existing); err != nil {
-			return err
+	response := a.applyScaleCommands(commands)
+	for _, result := range response.Results {
+		if result.Error != "" {
+			logx.Errorf("failed to apply kubernetes target for service %s: %s", result.ServiceName, result.Error)
+			return false
 		}
 	}
 
-	return nil
+	requestTime := time.Now().UTC()
+	a.mu.Lock()
+	for _, command := range commands {
+		a.cooldowns[command.ServiceName] = requestTime
+	}
+	a.mu.Unlock()
+	return true
 }
 
-func (a *App) applyTargets(commandsByNode map[string][]ServiceScaleCommand) bool {
+func (a *App) applyDockerTargets(commandsByNode map[string][]ServiceScaleCommand) bool {
 	leaderAddr, leaderStart, _, ready := a.leadershipSnapshot()
 	if !ready {
 		return false
@@ -458,9 +507,33 @@ func (a *App) Reconcile() {
 		return
 	}
 
+	if a.backend.Mode() == BackendKubernetesPeer {
+		commands := make([]ServiceScaleCommand, 0, len(a.inventory.Services))
+		for _, service := range a.inventory.Services {
+			aggregate, ok := a.aggregateService(service, clusterStates)
+			if !ok {
+				logx.Warnf("service=%s cluster observations inconsistent, skipping scaling", service.Name)
+				return
+			}
+			desired := a.desiredReplicas(aggregate)
+			if desired == aggregate.TotalReplicas {
+				continue
+			}
+			commands = append(commands, ServiceScaleCommand{ServiceName: service.Name, DesiredReplicas: desired})
+		}
+		if !a.applyKubernetesTargets(commands) {
+			logx.Infof("no scaling actions applied")
+		}
+		return
+	}
+
 	commandsByNode := make(map[string][]ServiceScaleCommand, len(a.config.PeerAddresses))
 	for _, service := range a.inventory.Services {
-		aggregate := aggregateService(service, clusterStates)
+		aggregate, ok := a.aggregateService(service, clusterStates)
+		if !ok {
+			logx.Warnf("service=%s cluster observations inconsistent, skipping scaling", service.Name)
+			return
+		}
 		desired := a.desiredReplicas(aggregate)
 		targets := planTargets(aggregate, desired)
 		for addr, target := range targets {
@@ -474,7 +547,7 @@ func (a *App) Reconcile() {
 		}
 	}
 
-	if !a.applyTargets(commandsByNode) {
+	if !a.applyDockerTargets(commandsByNode) {
 		logx.Infof("no scaling actions applied")
 	}
 }

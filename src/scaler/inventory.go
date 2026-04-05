@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func LoadServicesInventory(path string) (ServicesInventory, error) {
+func LoadServicesInventory(path string, backend BackendMode) (ServicesInventory, error) {
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return ServicesInventory{}, err
@@ -30,14 +30,21 @@ func LoadServicesInventory(path string) (ServicesInventory, error) {
 		if service.Name == "" {
 			return ServicesInventory{}, fmt.Errorf("service name is required")
 		}
-		if service.ImageName == "" {
-			return ServicesInventory{}, fmt.Errorf("service %s image_name is required", service.Name)
-		}
-		if service.ContainerPrefix == "" {
-			return ServicesInventory{}, fmt.Errorf("service %s container_prefix is required", service.Name)
-		}
-		if service.PortBase <= 0 {
-			return ServicesInventory{}, fmt.Errorf("service %s port_base must be > 0", service.Name)
+		switch backend {
+		case BackendDockerCluster:
+			if service.ImageName == "" {
+				return ServicesInventory{}, fmt.Errorf("service %s image_name is required", service.Name)
+			}
+			if service.ContainerPrefix == "" {
+				return ServicesInventory{}, fmt.Errorf("service %s container_prefix is required", service.Name)
+			}
+			if service.PortBase <= 0 {
+				return ServicesInventory{}, fmt.Errorf("service %s port_base must be > 0", service.Name)
+			}
+		case BackendKubernetesPeer:
+			if service.DeploymentName == "" {
+				return ServicesInventory{}, fmt.Errorf("service %s deployment_name is required", service.Name)
+			}
 		}
 		if service.MinReplicas < 1 {
 			return ServicesInventory{}, fmt.Errorf("service %s min_replicas must be >= 1", service.Name)
@@ -60,13 +67,15 @@ func LoadServicesInventory(path string) (ServicesInventory, error) {
 		if systemSeen[service.SystemID] {
 			return ServicesInventory{}, fmt.Errorf("duplicate system_id %d", service.SystemID)
 		}
-		if prefixSeen[service.ContainerPrefix] {
+		if service.ContainerPrefix != "" && prefixSeen[service.ContainerPrefix] {
 			return ServicesInventory{}, fmt.Errorf("duplicate container_prefix %s", service.ContainerPrefix)
 		}
 
 		nameSeen[service.Name] = true
 		systemSeen[service.SystemID] = true
-		prefixSeen[service.ContainerPrefix] = true
+		if service.ContainerPrefix != "" {
+			prefixSeen[service.ContainerPrefix] = true
+		}
 	}
 
 	return inventory, nil

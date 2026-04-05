@@ -2,6 +2,20 @@ package scaler
 
 import "time"
 
+type BackendMode string
+
+const (
+	BackendDockerCluster  BackendMode = "docker-cluster"
+	BackendKubernetesPeer BackendMode = "kubernetes-peer"
+)
+
+type MetricsFallbackPolicy string
+
+const (
+	MetricsFallbackScaleUpOnly MetricsFallbackPolicy = "scale-up-only"
+	MetricsFallbackAllowBoth   MetricsFallbackPolicy = "allow-both"
+)
+
 type ScaleRequest struct {
 	SystemID        int       `json:"system_id"`
 	CurrentReplicas int       `json:"current_replicas"`
@@ -30,6 +44,8 @@ type ServiceConfig struct {
 	ImageName       string  `yaml:"image_name" json:"imageName"`
 	ContainerPrefix string  `yaml:"container_prefix" json:"containerPrefix"`
 	PortBase        int     `yaml:"port_base" json:"portBase"`
+	Namespace       string  `yaml:"namespace" json:"namespace"`
+	DeploymentName  string  `yaml:"deployment_name" json:"deploymentName"`
 	MinReplicas     int     `yaml:"min_replicas" json:"minReplicas"`
 	MaxReplicas     int     `yaml:"max_replicas" json:"maxReplicas"`
 	TargetPerNode   float64 `yaml:"target_per_node" json:"targetPerNode"`
@@ -42,11 +58,14 @@ type ServicesInventory struct {
 }
 
 type RuntimeConfig struct {
+	Backend       BackendMode
 	SelfAddr      string
 	PeerAddresses []string
 	ServicesFile  string
 	ClusterToken  string
 	PredictorURL  string
+	K8SNamespace  string
+	MetricsPolicy MetricsFallbackPolicy
 	CheckInterval time.Duration
 	Cooldown      time.Duration
 }
@@ -66,6 +85,7 @@ type LocalServiceState struct {
 	CurrentReplicas int     `json:"currentReplicas"`
 	AvgCPU          float64 `json:"avgCPU"`
 	AvgMem          float64 `json:"avgMem"`
+	MetricsReady    bool    `json:"metricsReady"`
 }
 
 type ServicesStateResponse struct {
