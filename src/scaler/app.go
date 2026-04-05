@@ -4,62 +4,18 @@ import (
 	"fmt"
 	"nextcast/src/logx"
 	"sort"
-	"sync"
 	"time"
 )
 
-type peerClient interface {
-	FetchNodeInfo(addr string) (NodeInfoResponse, error)
-	FetchServicesState(addr string) (ServicesStateResponse, error)
-	PostScaleCommand(addr string, request ScaleCommandRequest) error
-}
-
-type peerView struct {
-	Addr      string
-	StartTime time.Time
-}
-
-type clusterServiceAggregate struct {
-	Service       ServiceConfig
-	CurrentByNode map[string]LocalServiceState
-	TotalReplicas int
-	WeightedCPU   float64
-	WeightedMem   float64
-	TotalRPS      float64
-	MetricsReady  bool
-}
-
-type scaleDecision struct {
-	DesiredReplicas     int
-	PredictedPeak       float64
-	BlendedPeak         float64
-	RecommendedReplicas int
-}
-
-type App struct {
-	config       RuntimeConfig
-	inventory    ServicesInventory
-	backend      Backend
-	startTime    time.Time
-	peerClient   peerClient
-	cooldowns    map[string]time.Time
-	rpsHistory   map[string][]float64
-	mu           sync.RWMutex
-	leaderAddr   string
-	leaderStart  time.Time
-	isLeader     bool
-	clusterReady bool
-}
-
-func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time, client peerClient) *App {
+func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time, client ClusterClient) *App {
 	return &App{
-		config:     config,
-		inventory:  inventory,
-		backend:    backend,
-		startTime:  startTime.UTC(),
-		peerClient: client,
-		cooldowns:  make(map[string]time.Time),
-		rpsHistory: make(map[string][]float64),
+		config:        config,
+		inventory:     inventory,
+		backend:       backend,
+		startTime:     startTime.UTC(),
+		clusterClient: client,
+		cooldowns:     make(map[string]time.Time),
+		rpsHistory:    make(map[string][]float64),
 	}
 }
 
@@ -140,19 +96,19 @@ func (a *App) HandleScaleCommand(request ScaleCommandRequest) (ScaleCommandRespo
 }
 
 func (a *App) evaluateLeadership() (string, time.Time, bool) {
-	views := make([]peerView, 0, len(a.config.PeerAddresses))
+	views := make([]clusterView, 0, len(a.config.PeerAddresses))
 	for _, addr := range a.config.PeerAddresses {
 		if addr == a.config.SelfAddr {
-			views = append(views, peerView{Addr: addr, StartTime: a.startTime})
+			views = append(views, clusterView{Addr: addr, StartTime: a.startTime})
 			continue
 		}
 
-		info, err := a.peerClient.FetchNodeInfo(addr)
+		info, err := a.clusterClient.FetchNodeInfo(addr)
 		if err != nil {
 			logx.Warnf("peer %s unavailable: %v", addr, err)
 			return "", time.Time{}, false
 		}
-		views = append(views, peerView{Addr: addr, StartTime: info.StartTime})
+		views = append(views, clusterView{Addr: addr, StartTime: info.StartTime})
 	}
 
 	sort.Slice(views, func(i, j int) bool {
@@ -408,7 +364,7 @@ func (a *App) collectClusterStates() ([]ServicesStateResponse, bool) {
 			continue
 		}
 
-		state, err := a.peerClient.FetchServicesState(addr)
+		state, err := a.clusterClient.FetchServicesState(addr)
 		if err != nil {
 			logx.Errorf("failed to read services state from %s: %v", addr, err)
 			return nil, false
@@ -505,7 +461,7 @@ func (a *App) applyDockerTargets(commandsByNode map[string][]ServiceScaleCommand
 				}
 			}
 		} else {
-			err = a.peerClient.PostScaleCommand(addr, request)
+			err = a.clusterClient.PostScaleCommand(addr, request)
 		}
 		if err != nil {
 			logx.Errorf("failed to apply targets on %s: %v", addr, err)

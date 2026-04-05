@@ -4,12 +4,6 @@ import "math"
 
 const rpsHistoryLimit = 5
 
-type scaleRecommendation struct {
-	PredictedPeak       float64
-	BlendedPeak         float64
-	RecommendedReplicas int
-}
-
 func calculateScaleRecommendation(service ServiceConfig, currentReplicas int, currentRPS float64, history []float64) scaleRecommendation {
 	predictedPeak := peakRPS(history)
 	blendedPeak := blendedRPS(currentRPS, history)

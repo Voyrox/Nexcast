@@ -15,13 +15,13 @@ const (
 	scaleCommandPath  = "/scaleCommand"
 )
 
-type clusterClient struct {
+type ClusterClient struct {
 	httpClient  *http.Client
 	bearerToken string
 }
 
-func newClusterClient(clusterToken string) *clusterClient {
-	return &clusterClient{
+func NewClusterClient(clusterToken string) *ClusterClient {
+	return &ClusterClient{
 		httpClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
@@ -29,16 +29,16 @@ func newClusterClient(clusterToken string) *clusterClient {
 	}
 }
 
-func (client *clusterClient) applyAuthHeaders(req *http.Request) {
+func (client *ClusterClient) applyAuthHeaders(req *http.Request) {
 	req.Header.Set("Authorization", client.bearerToken)
 	req.Header.Set("Content-Type", "application/json")
 }
 
-func (client *clusterClient) buildNodeURL(nodeAddr, path string) string {
+func (client *ClusterClient) buildNodeURL(nodeAddr, path string) string {
 	return fmt.Sprintf("http://%s%s", nodeAddr, path)
 }
 
-func (client *clusterClient) newRequest(method, nodeAddr, path string, body []byte) (*http.Request, error) {
+func (client *ClusterClient) newRequest(method, nodeAddr, path string, body []byte) (*http.Request, error) {
 	var reader *bytes.Reader
 	if body == nil {
 		reader = bytes.NewReader([]byte{})
@@ -55,7 +55,7 @@ func (client *clusterClient) newRequest(method, nodeAddr, path string, body []by
 	return req, nil
 }
 
-func (client *clusterClient) doJSON(req *http.Request, expectedStatus int, out any) error {
+func (client *ClusterClient) doJSON(req *http.Request, expectedStatus int, out any) error {
 	resp, err := client.httpClient.Do(req)
 	if err != nil {
 		return err
@@ -73,7 +73,7 @@ func (client *clusterClient) doJSON(req *http.Request, expectedStatus int, out a
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-func (client *clusterClient) FetchNodeInfo(nodeAddr string) (scaler.NodeInfoResponse, error) {
+func (client *ClusterClient) FetchNodeInfo(nodeAddr string) (scaler.NodeInfoResponse, error) {
 	req, err := client.newRequest(http.MethodGet, nodeAddr, nodeInfoPath, nil)
 	if err != nil {
 		return scaler.NodeInfoResponse{}, err
@@ -87,7 +87,7 @@ func (client *clusterClient) FetchNodeInfo(nodeAddr string) (scaler.NodeInfoResp
 	return result, nil
 }
 
-func (client *clusterClient) FetchServicesState(nodeAddr string) (scaler.ServicesStateResponse, error) {
+func (client *ClusterClient) FetchServicesState(nodeAddr string) (scaler.ServicesStateResponse, error) {
 	req, err := client.newRequest(http.MethodGet, nodeAddr, servicesStatePath, nil)
 	if err != nil {
 		return scaler.ServicesStateResponse{}, err
@@ -101,7 +101,7 @@ func (client *clusterClient) FetchServicesState(nodeAddr string) (scaler.Service
 	return result, nil
 }
 
-func (client *clusterClient) PostScaleCommand(nodeAddr string, payload scaler.ScaleCommandRequest) error {
+func (client *ClusterClient) PostScaleCommand(nodeAddr string, payload scaler.ScaleCommandRequest) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err

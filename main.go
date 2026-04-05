@@ -40,8 +40,8 @@ func main() {
 		logx.Fatalf("unsupported backend: %s", config.Backend)
 	}
 
-	peerClient := api.NewPeerClient(config.ClusterToken)
-	app := scaler.NewApp(config, inventory, backend, time.Now().UTC(), peerClient)
+	clusterClient := api.NewClusterClient(config.ClusterToken)
+	app := scaler.NewApp(config, inventory, backend, time.Now().UTC(), clusterClient)
 	server := api.NewServer(app)
 	server.Start()
 

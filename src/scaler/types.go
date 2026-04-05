@@ -1,6 +1,9 @@
 package scaler
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 type BackendMode string
 
@@ -15,6 +18,55 @@ const (
 	MetricsFallbackScaleUpOnly MetricsFallbackPolicy = "scale-up-only"
 	MetricsFallbackAllowBoth   MetricsFallbackPolicy = "allow-both"
 )
+
+type ClusterClient interface {
+	FetchNodeInfo(addr string) (NodeInfoResponse, error)
+	FetchServicesState(addr string) (ServicesStateResponse, error)
+	PostScaleCommand(addr string, request ScaleCommandRequest) error
+}
+
+type clusterView struct {
+	Addr      string
+	StartTime time.Time
+}
+
+type clusterServiceAggregate struct {
+	Service       ServiceConfig
+	CurrentByNode map[string]LocalServiceState
+	TotalReplicas int
+	WeightedCPU   float64
+	WeightedMem   float64
+	TotalRPS      float64
+	MetricsReady  bool
+}
+
+type scaleDecision struct {
+	DesiredReplicas     int
+	PredictedPeak       float64
+	BlendedPeak         float64
+	RecommendedReplicas int
+}
+
+type scaleRecommendation struct {
+	PredictedPeak       float64
+	BlendedPeak         float64
+	RecommendedReplicas int
+}
+
+type App struct {
+	config        RuntimeConfig
+	inventory     ServicesInventory
+	backend       Backend
+	startTime     time.Time
+	clusterClient ClusterClient
+	cooldowns     map[string]time.Time
+	rpsHistory    map[string][]float64
+	mu            sync.RWMutex
+	leaderAddr    string
+	leaderStart   time.Time
+	isLeader      bool
+	clusterReady  bool
+}
 
 type ServiceConfig struct {
 	Name              string  `yaml:"name" json:"name"`
