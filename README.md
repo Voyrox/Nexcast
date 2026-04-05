@@ -32,7 +32,6 @@ $$
   - [Setup](#setup)
     - [Python](#python)
     - [Go](#go)
-  - [Running The Predictor](#running-the-predictor)
   - [Running The Autoscaler](#running-the-autoscaler)
   - [Example Workload](#example-workload)
     - [Docker Example](#docker-example)
@@ -69,31 +68,6 @@ go mod download
 go build ./...
 ```
 
-## Running The Predictor
-
-Start the FastAPI predictor service:
-
-```bash
-uvicorn predictor:app --host 0.0.0.0 --port 8000
-```
-
-What `predictor.py` does:
-
-- Loads the TensorFlow SavedModel from `MODEL_PATH`
-- Exposes `POST /predict` for direct demand predictions
-- Exposes `POST /scale` for autoscaler-friendly replica recommendations
-- Exposes `POST /observations` for leader-emitted training samples
-- Blends predicted demand with current CPU and memory input before returning `recommended_replicas`
-- Can optionally convert forecast traffic into replicas with the `RPS -> cores -> instances` formula when traffic parameters are provided
-
-Useful environment variables:
-
-- `MODEL_PATH` defaults to `model/demand_predictor`
-- `LOOKBACK` defaults to `30`
-- `HORIZON` defaults to `7`
-- `DEFAULT_SYSTEM_ID` defaults to `0`
-- `OBSERVATIONS_PATH` defaults to `data/training/observations.jsonl`
-
 ## Running The Autoscaler
 
 Start it with:
@@ -109,10 +83,10 @@ What the autoscaler does:
 - Elects a leader from the configured peer list based on the oldest running node
 - Collects service state from the cluster
 - Posts one cluster level observation per service per reconcile cycle to the observation collector
-- Calls the predictor `/scale` endpoint
+- Calculates replica recommendations locally from current traffic and service capacity settings
 - Applies replica changes through the selected backend
 
-If a service exposes traffic metrics and includes capacity coefficients in `services.yaml`, Nexcast also scrapes current RPS and sends it to the predictor alongside CPU and memory.
+If a service exposes traffic metrics and includes capacity coefficients in `services.yaml`, Nexcast scrapes current RPS and converts that demand into replica recommendations locally.
 
 ## Example Workload
 
@@ -165,7 +139,6 @@ Example:
 
 ```bash
 BACKEND=docker-cluster
-PREDICTOR_URL=http://localhost:8000/scale
 SELF_ADDR=10.0.0.11:8081
 PUPPETS=10.0.0.11:8081,10.0.0.12:8081,10.0.0.13:8081
 CLUSTER_TOKEN=change-me
@@ -175,7 +148,7 @@ COOLDOWN=60s
 OBSERVATION_URL=http://localhost:8000/observations
 ```
 
-In Docker mode, only the leader calls the predictor. Followers expose local state and execute leader-issued scale commands against their local Docker daemon.
+In Docker mode, only the leader computes cluster-wide scaling decisions. Followers expose local state and execute leader-issued scale commands against their local Docker daemon.
 
 ### Kubernetes
 
@@ -198,7 +171,6 @@ Run multiple Nexcast peers in-cluster with shared `PUPPETS` and a shared `CLUSTE
 
 ```bash
 BACKEND=kubernetes-peer
-PREDICTOR_URL=http://predictor.default.svc.cluster.local:8000/scale
 SELF_ADDR=nexcast-0.nexcast-peers.default.svc.cluster.local:8081
 PUPPETS=nexcast-0.nexcast-peers.default.svc.cluster.local:8081,nexcast-1.nexcast-peers.default.svc.cluster.local:8081,nexcast-2.nexcast-peers.default.svc.cluster.local:8081
 CLUSTER_TOKEN=change-me
@@ -221,8 +193,7 @@ Training data behavior:
 
 - Only the elected leader emits observations, which avoids duplicate samples from every node
 - The leader emits one observation per service on every reconcile cycle, even when no scale action is applied
-- Observations are appended as JSONL to the predictor's `OBSERVATIONS_PATH`
-- `main.py` reads `services.yaml` plus centralized observations and falls back to synthetic data only when no usable observations exist
+- Observations can be forwarded to any external collector that accepts the JSON payload
 
 The Kubernetes backend uses the in-cluster API by default. Override the connection with these environment variables when needed:
 
@@ -236,15 +207,13 @@ Traffic metrics behavior:
 - Docker mode scrapes each managed container via its mapped host port and `metrics_path`
 - Kubernetes mode scrapes each pod via `podIP:metrics_port + metrics_path`
 - the built-in example app exposes `GET /metrics` with a rolling `rps` field
-- `main.py` trains on observed `rps` when present, and falls back to `max(cpu_percent, memory_percent)` when traffic data is absent
+- Nexcast uses recent observed `rps` samples to smooth demand before sizing replicas
 
 See `example/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for an in-cluster example deployment.
 
 ### API
-- `predictor.py` is the TensorFlow + FastAPI service. It loads the SavedModel, exposes `/predict` and `/scale`, and returns demand and replica recommendations.
 - `src/scaler/` contains the reconcile loop, leader logic, scaling policy, cooldowns, and shared backend logic.
 - `src/api/` contains the peer-to-peer HTTP API used by autoscaler nodes.
 - `src/docker/` contains Docker-specific container listing, stats, and local scaling operations.
 - `src/kubernetes/` contains Kubernetes-specific Deployment state reads, metrics reads, and replica updates.
 - `src/logx/` contains logging helpers.
-- `model/` is the default location for the TensorFlow SavedModel loaded by `predictor.py`.

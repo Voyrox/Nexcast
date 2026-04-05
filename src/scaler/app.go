@@ -43,6 +43,7 @@ type App struct {
 	startTime    time.Time
 	peerClient   peerClient
 	cooldowns    map[string]time.Time
+	rpsHistory   map[string][]float64
 	mu           sync.RWMutex
 	leaderAddr   string
 	leaderStart  time.Time
@@ -58,6 +59,7 @@ func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, 
 		startTime:  startTime.UTC(),
 		peerClient: client,
 		cooldowns:  make(map[string]time.Time),
+		rpsHistory: make(map[string][]float64),
 	}
 }
 
@@ -272,26 +274,8 @@ func (a *App) desiredReplicas(aggregate clusterServiceAggregate) scaleDecision {
 		return scaleDecision{DesiredReplicas: service.MinReplicas}
 	}
 
-	request := ScaleRequest{
-		SystemID:          service.SystemID,
-		CurrentReplicas:   clampInt(aggregate.TotalReplicas, 1, service.MaxReplicas),
-		CPUPerc:           aggregate.WeightedCPU,
-		MemoryPerc:        aggregate.WeightedMem,
-		CurrentRPS:        aggregate.TotalRPS,
-		TargetPerNode:     service.TargetPerNode,
-		MinReplicas:       service.MinReplicas,
-		MaxReplicas:       service.MaxReplicas,
-		Beta:              service.Beta,
-		UtilizationTarget: service.UtilizationTarget,
-		InterceptA:        service.InterceptA,
-		CoresInstance:     service.CoresInstance,
-	}
-
-	response, err := callPredictor(a.config.PredictorURL, request)
-	if err != nil {
-		logx.Errorf("predictor failed for %s: %v", service.Name, err)
-		return scaleDecision{DesiredReplicas: aggregate.TotalReplicas}
-	}
+	history := a.recordRPS(service.Name, aggregate.TotalRPS)
+	response := calculateScaleRecommendation(service, aggregate.TotalReplicas, aggregate.TotalRPS, history)
 
 	desired := response.RecommendedReplicas
 	if desired > aggregate.TotalReplicas {

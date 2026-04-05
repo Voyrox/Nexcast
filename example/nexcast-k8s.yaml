@@ -99,8 +99,6 @@ spec:
                   fieldPath: metadata.namespace
             - name: BACKEND
               value: kubernetes-peer
-            - name: PREDICTOR_URL
-              value: http://predictor.default.svc.cluster.local:8000/scale
             - name: PUPPETS
               value: nexcast-0.nexcast-peers.default.svc.cluster.local:8081,nexcast-1.nexcast-peers.default.svc.cluster.local:8081,nexcast-2.nexcast-peers.default.svc.cluster.local:8081
             - name: CLUSTER_TOKEN

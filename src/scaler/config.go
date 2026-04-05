@@ -82,7 +82,6 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 		PeerAddresses:  parsePeerAddresses(getenv("PUPPETS", "")),
 		ServicesFile:   getenv("SERVICES_FILE", "services.yaml"),
 		ClusterToken:   getenv("CLUSTER_TOKEN", ""),
-		PredictorURL:   getenv("PREDICTOR_URL", "http://localhost:8000/scale"),
 		ObservationURL: getenv("OBSERVATION_URL", "http://localhost:8000/observations"),
 		K8SNamespace:   getenv("K8S_NAMESPACE", "default"),
 		MetricsPolicy:  metricsPolicy,
