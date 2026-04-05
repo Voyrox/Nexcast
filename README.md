@@ -30,9 +30,6 @@ $$
 - [Nexcast](#nexcast)
   - [Table of Contents](#table-of-contents)
   - [Setup](#setup)
-    - [Python](#python)
-    - [Go](#go)
-  - [Running The Autoscaler](#running-the-autoscaler)
   - [Example Workload](#example-workload)
     - [Docker Example](#docker-example)
     - [Kubernetes Example](#kubernetes-example)
@@ -43,37 +40,20 @@ $$
 
 ## Setup
 
-### Python
-
-If `py -3.12` is not available on your machine, install Python 3.12 first:
-
-```powershell
-winget install Python.Python.3.12
-```
-
-Create a virtual environment and install Python dependencies:
-
-```powershell
-py -3.12 -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-### Go
-
 Make sure Go is installed, then fetch dependencies and verify the project builds:
 
 ```bash
 go mod download
-go build ./...
+go build
 ```
 
-## Running The Autoscaler
-
 Start it with:
-
 ```bash
-go run main.go
+sudo cp nexcast.service /etc/systemd/system/
+sudo mkdir -p /etc/nexcast
+sudo cp .env /etc/nexcast/nexcast.env
+sudo systemctl daemon-reload
+sudo systemctl enable --now nexcast
 ```
 
 What the autoscaler does:

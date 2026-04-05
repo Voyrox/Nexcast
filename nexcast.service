@@ -1,0 +1,15 @@
+[Unit]
+Description=Nexcast autoscaler
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/nexcast
+EnvironmentFile=/etc/nexcast/nexcast.env
+ExecStart=/opt/nexcast/nexcast
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
