@@ -1,26 +1,6 @@
 # Nexcast
 
-Nexcast combines a TensorFlow demand predictor with a Go autoscaler. The predictor forecasts demand and returns replica recommendations, while the autoscaler coordinates scaling decisions across a small peer cluster using either Docker or Kubernetes.
-
-## Table of Contents
-
-- [Project Layout](#project-layout)
-- [Setup](#setup)
-  - [Python](#python)
-  - [Go](#go)
-- [Running The Predictor](#running-the-predictor)
-- [Running The Autoscaler](#running-the-autoscaler)
-- [Example Workload](#example-workload)
-  - [Docker Example](#docker-example)
-  - [Kubernetes Example](#kubernetes-example)
-- [Cluster Modes](#cluster-modes)
-  - [Docker Backend](#docker-backend)
-  - [Kubernetes Peer Backend](#kubernetes-peer-backend)
-  - [API](#api)
-
-## Traffic Prediction
-
-Traffic-aware scaling uses per-service traffic metrics and capacity settings from `services.yaml`. When `beta`, `utilization_target`, `a`, and `cores_instance` are configured, the predictor can convert forecast traffic into required replicas with:
+Nextcast is a autoscaler that forecats demand and returns replica recommendations, while the autoscaler coordinates scaling decisions across peer cluster using Docker or Kubernetes. Traffic is calculated using per-service traffic metrics and capactity settings from the `services.yaml`. When `beta`, `utilization_target`, `a`, and `cores_instance` are configured, the predictor can convert forecast traffic into required replicas with:
 
 $$
 \text{Cores}_{\text{total}} = \frac{\beta \cdot \text{RPS}_{\text{target}}}{\text{utilization}_{\text{target}} - a}
@@ -35,13 +15,28 @@ $$
 - `utilization_target` is the desired safe operating utilization for the service, usually kept below 1.0 to leave headroom.
 - `cores_instance` is the effective CPU capacity one replica can contribute.
 
-In practice, `beta` and `a` should come from load testing or production observations per service. If they are guessed poorly, traffic-based scaling will be noisy.
+Overall `beta` and `a` should come from load testing or production observations per service. If they are guessed poorly, traffic-based scaling will be noisy. The oldest reachable node by process `startTime` becomes leader. If any configured peer is unreachable, the cluster fails closed and skips scaling until full visibility returns. Nexcast supports two peer-coordinated backends:
+
+- `Docker cluster` for local Docker daemons across multiple servers
+- `Kubernetes peer` for scaling existing Kubernetes Deployments while keeping the same peer leader model. 
+
+## Table of Contents
+- [Setup](#setup)
+  - [Python](#python)
+  - [Go](#go)
+- [Running The Predictor](#running-the-predictor)
+- [Running The Autoscaler](#running-the-autoscaler)
+- [Example Workload](#example-workload)
+  - [Docker Example](#docker-example)
+  - [Kubernetes Example](#kubernetes-example)
+- [Docker and Kubernetes config](#docker-and-kubernetes-config)
+  - [Docker](#docker)
+  - [Kubernetes](#kubernetes)
+  - [API](#api)
 
 ## Setup
 
 ### Python
-
-TensorFlow does not install on Python 3.14 on Windows, so use Python 3.12 for this project.
 
 If `py -3.12` is not available on your machine, install Python 3.12 first:
 
@@ -76,12 +71,12 @@ uvicorn predictor:app --host 0.0.0.0 --port 8000
 
 What `predictor.py` does:
 
-- loads the TensorFlow SavedModel from `MODEL_PATH`
-- exposes `POST /predict` for direct demand predictions
-- exposes `POST /scale` for autoscaler-friendly replica recommendations
-- exposes `POST /observations` for leader-emitted training samples
-- blends predicted demand with current CPU and memory input before returning `recommended_replicas`
-- can optionally convert forecast traffic into replicas with the `RPS -> cores -> instances` formula when traffic parameters are provided
+- Loads the TensorFlow SavedModel from `MODEL_PATH`
+- Exposes `POST /predict` for direct demand predictions
+- Exposes `POST /scale` for autoscaler-friendly replica recommendations
+- Exposes `POST /observations` for leader-emitted training samples
+- Blends predicted demand with current CPU and memory input before returning `recommended_replicas`
+- Can optionally convert forecast traffic into replicas with the `RPS -> cores -> instances` formula when traffic parameters are provided
 
 Useful environment variables:
 
@@ -93,8 +88,6 @@ Useful environment variables:
 
 ## Running The Autoscaler
 
-The Go autoscaler is started from `main.go` and uses the code in `src/`.
-
 Start it with:
 
 ```bash
@@ -103,13 +96,13 @@ go run main.go
 
 What the autoscaler does:
 
-- loads runtime configuration and the shared `services.yaml` inventory
-- starts the peer API server used by other Nexcast nodes
-- elects a leader from the configured peer list
-- collects service state from the cluster
-- posts one cluster-level observation per service per reconcile cycle to the observation collector
-- calls the predictor `/scale` endpoint
-- applies replica changes through the selected backend
+- Loads runtime configuration and the shared `services.yaml` inventory
+- Starts the peer API server used by other Nexcast nodes
+- Elects a leader from the configured peer list based on the oldest running node
+- Collects service state from the cluster
+- Posts one cluster level observation per service per reconcile cycle to the observation collector
+- Calls the predictor `/scale` endpoint
+- Applies replica changes through the selected backend
 
 If a service exposes traffic metrics and includes capacity coefficients in `services.yaml`, Nexcast also scrapes current RPS and sends it to the predictor alongside CPU and memory.
 
@@ -133,22 +126,9 @@ kubectl apply -f example/deployment.yaml
 kubectl apply -f example/service.yaml
 ```
 
-## Cluster Modes
+## Docker and Kubernetes config
 
-Nexcast supports two peer-coordinated backends:
-
-- `docker-cluster` for local Docker daemons across multiple servers
-- `kubernetes-peer` for scaling existing Kubernetes Deployments while keeping the same peer leader model
-
-Every autoscaler node serves:
-
-- `GET /nodeInfo`
-- `GET /servicesState`
-- `POST /scaleCommand`
-
-The oldest reachable node by process `startTime` becomes leader. If any configured peer is unreachable, the cluster fails closed and skips scaling until full visibility returns.
-
-### Docker Backend
+### Docker
 
 Create a shared service inventory in `services.yaml` on every node:
 
@@ -189,7 +169,7 @@ OBSERVATION_URL=http://localhost:8000/observations
 
 In Docker mode, only the leader calls the predictor. Followers expose local state and execute leader-issued scale commands against their local Docker daemon.
 
-### Kubernetes Peer Backend
+### Kubernetes
 
 Create a Kubernetes inventory in `services.yaml` on every Nexcast peer:
 
@@ -226,14 +206,14 @@ In Kubernetes mode, Nexcast keeps the same peer leader-election flow, but the el
 
 Metrics behavior:
 
-- if the Metrics API is available, Nexcast computes CPU and memory utilization from pod usage versus pod resource requests
-- if metrics are unavailable, Nexcast falls back to replica-count-only mode and, by default, only allows scale-up decisions while holding steady on scale-down recommendations
+- If the Metrics API is available, Nexcast computes CPU and memory utilization from pod usage versus pod resource requests
+- If metrics are unavailable, Nexcast falls back to replica-count-only mode and, by default, only allows scale-up decisions while holding steady on scale-down recommendations
 
 Training data behavior:
 
-- only the elected leader emits observations, which avoids duplicate samples from every node
-- the leader emits one observation per service on every reconcile cycle, even when no scale action is applied
-- observations are appended as JSONL to the predictor's `OBSERVATIONS_PATH`
+- Only the elected leader emits observations, which avoids duplicate samples from every node
+- The leader emits one observation per service on every reconcile cycle, even when no scale action is applied
+- Observations are appended as JSONL to the predictor's `OBSERVATIONS_PATH`
 - `main.py` reads `services.yaml` plus centralized observations and falls back to synthetic data only when no usable observations exist
 
 The Kubernetes backend uses the in-cluster API by default. Override the connection with these environment variables when needed:
