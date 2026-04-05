@@ -2,24 +2,33 @@
 
 Nexcast combines a TensorFlow demand predictor with a Go autoscaler. The predictor forecasts demand and returns replica recommendations, while the autoscaler coordinates scaling decisions across a small peer cluster using either Docker or Kubernetes.
 
-## Project Layout
+## Table of Contents
 
-- `predictor.py` is the TensorFlow + FastAPI service. It loads the SavedModel, exposes `/predict` and `/scale`, and returns demand and replica recommendations.
-- `src/` contains the Go autoscaler.
-- `src/scaler/` contains the reconcile loop, leader logic, scaling policy, cooldowns, and shared backend logic.
-- `src/api/` contains the peer-to-peer HTTP API used by autoscaler nodes.
-- `src/docker/` contains Docker-specific container listing, stats, and local scaling operations.
-- `src/kubernetes/` contains Kubernetes-specific Deployment state reads, metrics reads, and replica updates.
-- `src/logx/` contains logging helpers.
-- `example/` contains the sample app, Docker image example, and Kubernetes manifests.
-- `model/` is the default location for the TensorFlow SavedModel loaded by `predictor.py`.
+- [Project Layout](#project-layout)
+- [Setup](#setup)
+  - [Python](#python)
+  - [Go](#go)
+- [Running The Predictor](#running-the-predictor)
+- [Running The Autoscaler](#running-the-autoscaler)
+- [Example Workload](#example-workload)
+  - [Docker Example](#docker-example)
+  - [Kubernetes Example](#kubernetes-example)
+- [Cluster Modes](#cluster-modes)
+  - [Docker Backend](#docker-backend)
+  - [Kubernetes Peer Backend](#kubernetes-peer-backend)
+  - [API](#api)
+
+## Traffic Prediction
 
 Traffic-aware scaling uses per-service traffic metrics and capacity settings from `services.yaml`. When `beta`, `utilization_target`, `a`, and `cores_instance` are configured, the predictor can convert forecast traffic into required replicas with:
 
-```text
-Cores_total = (beta * RPS_target) / (utilization_target - a)
-Instances = ceil(Cores_total / cores_instance)
-```
+$$
+\text{Cores}_{\text{total}} = \frac{\beta \cdot \text{RPS}_{\text{target}}}{\text{utilization}_{\text{target}} - a}
+$$
+
+$$
+\text{Instances} = \left\lceil \frac{\text{Cores}_{\text{total}}}{\text{cores}_{\text{instance}}} \right\rceil
+$$
 
 - `beta` is the service's CPU cost per request rate unit; higher `beta` means each extra unit of traffic consumes more CPU.
 - `a` is a fixed utilization offset that accounts for baseline overhead or inefficiency before useful traffic work is done.
@@ -242,3 +251,14 @@ Traffic metrics behavior:
 - `main.py` trains on observed `rps` when present, and falls back to `max(cpu_percent, memory_percent)` when traffic data is absent
 
 See `example/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for an in-cluster example deployment.
+
+### API
+- `predictor.py` is the TensorFlow + FastAPI service. It loads the SavedModel, exposes `/predict` and `/scale`, and returns demand and replica recommendations.
+- `src/` contains the Go autoscaler.
+- `src/scaler/` contains the reconcile loop, leader logic, scaling policy, cooldowns, and shared backend logic.
+- `src/api/` contains the peer-to-peer HTTP API used by autoscaler nodes.
+- `src/docker/` contains Docker-specific container listing, stats, and local scaling operations.
+- `src/kubernetes/` contains Kubernetes-specific Deployment state reads, metrics reads, and replica updates.
+- `src/logx/` contains logging helpers.
+- `example/` contains the sample app, Docker image example, and Kubernetes manifests.
+- `model/` is the default location for the TensorFlow SavedModel loaded by `predictor.py`.
