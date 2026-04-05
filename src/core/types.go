@@ -47,10 +47,9 @@ type scaleDecision struct {
 	RecommendedReplicas int
 }
 
-type scaleRecommendation struct {
-	PredictedPeak       float64
-	BlendedPeak         float64
-	RecommendedReplicas int
+type servicePlan struct {
+	aggregate clusterServiceAggregate
+	decision  scaleDecision
 }
 
 type App struct {

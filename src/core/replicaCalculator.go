@@ -4,7 +4,7 @@ import "math"
 
 const rpsHistoryLimit = 5
 
-func calculateScaleRecommendation(service ServiceConfig, currentReplicas int, currentRPS float64, history []float64) scaleRecommendation {
+func calculateScaleRecommendation(service ServiceConfig, currentReplicas int, currentRPS float64, history []float64) scaleDecision {
 	predictedPeak := peakRPS(history)
 	blendedPeak := blendedRPS(currentRPS, history)
 	demandRPS := predictedPeak
@@ -23,7 +23,7 @@ func calculateScaleRecommendation(service ServiceConfig, currentReplicas int, cu
 		recommended = service.MinReplicas
 	}
 
-	return scaleRecommendation{
+	return scaleDecision{
 		PredictedPeak:       predictedPeak,
 		BlendedPeak:         blendedPeak,
 		RecommendedReplicas: recommended,

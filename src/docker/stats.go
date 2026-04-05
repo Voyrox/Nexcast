@@ -1,7 +1,6 @@
 package docker
 
 import (
-	"sort"
 	"strconv"
 	"strings"
 )
@@ -21,32 +20,16 @@ func GetDockerStats(prefix string) ([]DockerStat, error) {
 	if err != nil {
 		return nil, err
 	}
-	if strings.TrimSpace(out) == "" {
-		return []DockerStat{}, nil
+	rows := parseDockerRows(out, prefix, 4)
+	result := make([]DockerStat, 0, len(rows))
+	for _, parts := range rows {
+		result = append(result, DockerStat{
+			ContainerID: parts[0],
+			Name:        parts[1],
+			CPUPerc:     parsePercent(parts[2]),
+			MemPerc:     parsePercent(parts[3]),
+		})
 	}
-
-	lines := strings.Split(out, "\n")
-	result := make([]DockerStat, 0, len(lines))
-
-	for _, line := range lines {
-		parts := strings.Split(line, "|")
-		if len(parts) < 4 {
-			continue
-		}
-		name := parts[1]
-		if strings.HasPrefix(name, prefix) {
-			result = append(result, DockerStat{
-				ContainerID: parts[0],
-				Name:        name,
-				CPUPerc:     parsePercent(parts[2]),
-				MemPerc:     parsePercent(parts[3]),
-			})
-		}
-	}
-
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].Name < result[j].Name
-	})
 
 	return result, nil
 }

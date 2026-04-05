@@ -8,7 +8,7 @@ import (
 func nextAvailablePort(base int, existing []ContainerInfo) int {
 	used := map[int]bool{}
 	for _, c := range existing {
-		for _, p := range hostPortsFromBinding(c.Ports) {
+		for _, p := range HostPorts(c.Ports) {
 			used[p] = true
 		}
 	}
@@ -18,8 +18,7 @@ func nextAvailablePort(base int, existing []ContainerInfo) int {
 		}
 	}
 }
-
-func hostPortsFromBinding(binding string) []int {
+func HostPorts(binding string) []int {
 	chunks := strings.Split(binding, ",")
 	ports := make([]int, 0, len(chunks))
 	for _, chunk := range chunks {

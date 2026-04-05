@@ -3,8 +3,8 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	scaler "nextcast/src/core"
 	"nextcast/src/logx"
-	"nextcast/src/scaler"
 	"time"
 )
 
@@ -28,19 +28,28 @@ func (s *Server) authorize(r *http.Request) bool {
 	return r.Header.Get("Authorization") == "Bearer "+s.handler.ClusterToken()
 }
 
+func (s *Server) requireAuth(w http.ResponseWriter, r *http.Request) bool {
+	if s.authorize(r) {
+		return true
+	}
+	http.Error(w, "unauthorized", http.StatusUnauthorized)
+	return false
+}
+
+func writeJSON(w http.ResponseWriter, value any) {
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(value)
+}
+
 func (s *Server) handleNodeInfo(w http.ResponseWriter, r *http.Request) {
-	if !s.authorize(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	if !s.requireAuth(w, r) {
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(s.handler.NodeInfo())
+	writeJSON(w, s.handler.NodeInfo())
 }
 
 func (s *Server) handleServicesState(w http.ResponseWriter, r *http.Request) {
-	if !s.authorize(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	if !s.requireAuth(w, r) {
 		return
 	}
 
@@ -50,13 +59,11 @@ func (s *Server) handleServicesState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(state)
+	writeJSON(w, state)
 }
 
 func (s *Server) handleScaleCommand(w http.ResponseWriter, r *http.Request) {
-	if !s.authorize(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	if !s.requireAuth(w, r) {
 		return
 	}
 
@@ -72,8 +79,7 @@ func (s *Server) handleScaleCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(response)
+	writeJSON(w, response)
 }
 
 func (s *Server) Start() {

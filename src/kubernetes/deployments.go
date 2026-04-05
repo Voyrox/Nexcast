@@ -30,11 +30,7 @@ func (b *Backend) getDeployment(namespace, name string) (deploymentResponse, err
 }
 
 func (b *Backend) listDeploymentPods(namespace string, deployment deploymentResponse) ([]podResponse, error) {
-	selector := encodeLabelSelector(deployment.Spec.Selector.MatchLabels)
-	query := url.Values{}
-	query.Set("labelSelector", selector)
-
-	respBody, err := b.client.doJSON(http.MethodGet, fmt.Sprintf("/api/v1/namespaces/%s/pods", url.PathEscape(namespace)), query, nil, nil)
+	respBody, err := b.client.doJSON(http.MethodGet, fmt.Sprintf("/api/v1/namespaces/%s/pods", url.PathEscape(namespace)), labelSelectorQuery(deployment.Spec.Selector.MatchLabels), nil, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +41,12 @@ func (b *Backend) listDeploymentPods(namespace string, deployment deploymentResp
 	}
 
 	return pods.Items, nil
+}
+
+func labelSelectorQuery(matchLabels map[string]string) url.Values {
+	query := url.Values{}
+	query.Set("labelSelector", encodeLabelSelector(matchLabels))
+	return query
 }
 
 func encodeLabelSelector(matchLabels map[string]string) string {

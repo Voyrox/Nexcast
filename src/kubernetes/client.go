@@ -1,13 +1,12 @@
 package kubernetes
 
 import (
-	"bytes"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
+	"nextcast/src/shared"
 	"os"
 	"strings"
 	"time"
@@ -81,7 +80,7 @@ func (c *apiClient) doJSON(method, apiPath string, query url.Values, body []byte
 		fullURL += "?" + query.Encode()
 	}
 
-	req, err := http.NewRequest(method, fullURL, bytes.NewReader(body))
+	req, err := shared.NewRequest(method, fullURL, body)
 	if err != nil {
 		return nil, err
 	}
@@ -91,23 +90,9 @@ func (c *apiClient) doJSON(method, apiPath string, query url.Values, body []byte
 		req.Header.Set(key, value)
 	}
 
-	resp, err := c.httpClient.Do(req)
+	respBody, err := shared.Do(req, c.httpClient, 0)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("kubernetes api %s %s: %w", method, apiPath, err)
 	}
-	defer resp.Body.Close()
-
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode >= 300 {
-		message := strings.TrimSpace(string(respBody))
-		if message == "" {
-			message = resp.Status
-		}
-		return nil, fmt.Errorf("kubernetes api %s %s returned %d: %s", method, apiPath, resp.StatusCode, message)
-	}
-
 	return respBody, nil
 }

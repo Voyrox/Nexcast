@@ -1,11 +1,11 @@
 package api
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"nextcast/src/scaler"
+	core "nextcast/src/core"
+	"nextcast/src/shared"
 	"time"
 )
 
@@ -39,14 +39,7 @@ func (client *ClusterClient) buildNodeURL(nodeAddr, path string) string {
 }
 
 func (client *ClusterClient) newRequest(method, nodeAddr, path string, body []byte) (*http.Request, error) {
-	var reader *bytes.Reader
-	if body == nil {
-		reader = bytes.NewReader([]byte{})
-	} else {
-		reader = bytes.NewReader(body)
-	}
-
-	req, err := http.NewRequest(method, client.buildNodeURL(nodeAddr, path), reader)
+	req, err := shared.NewRequest(method, client.buildNodeURL(nodeAddr, path), body)
 	if err != nil {
 		return nil, err
 	}
@@ -56,52 +49,36 @@ func (client *ClusterClient) newRequest(method, nodeAddr, path string, body []by
 }
 
 func (client *ClusterClient) doJSON(req *http.Request, expectedStatus int, out any) error {
-	resp, err := client.httpClient.Do(req)
+	return shared.DoJSON(req, client.httpClient, expectedStatus, out)
+}
+
+func (client *ClusterClient) fetchNodeJSON(nodeAddr, path string, out any) error {
+	req, err := client.newRequest(http.MethodGet, nodeAddr, path, nil)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != expectedStatus {
-		return fmt.Errorf("%s %s returned status %d", req.Method, req.URL.Path, resp.StatusCode)
-	}
-
-	if out == nil {
-		return nil
-	}
-
-	return json.NewDecoder(resp.Body).Decode(out)
+	return client.doJSON(req, http.StatusOK, out)
 }
 
-func (client *ClusterClient) FetchNodeInfo(nodeAddr string) (scaler.NodeInfoResponse, error) {
-	req, err := client.newRequest(http.MethodGet, nodeAddr, nodeInfoPath, nil)
-	if err != nil {
-		return scaler.NodeInfoResponse{}, err
-	}
-
-	var result scaler.NodeInfoResponse
-	if err := client.doJSON(req, http.StatusOK, &result); err != nil {
-		return scaler.NodeInfoResponse{}, err
+func (client *ClusterClient) FetchNodeInfo(nodeAddr string) (core.NodeInfoResponse, error) {
+	var result core.NodeInfoResponse
+	if err := client.fetchNodeJSON(nodeAddr, nodeInfoPath, &result); err != nil {
+		return core.NodeInfoResponse{}, err
 	}
 
 	return result, nil
 }
 
-func (client *ClusterClient) FetchServicesState(nodeAddr string) (scaler.ServicesStateResponse, error) {
-	req, err := client.newRequest(http.MethodGet, nodeAddr, servicesStatePath, nil)
-	if err != nil {
-		return scaler.ServicesStateResponse{}, err
-	}
-
-	var result scaler.ServicesStateResponse
-	if err := client.doJSON(req, http.StatusOK, &result); err != nil {
-		return scaler.ServicesStateResponse{}, err
+func (client *ClusterClient) FetchServicesState(nodeAddr string) (core.ServicesStateResponse, error) {
+	var result core.ServicesStateResponse
+	if err := client.fetchNodeJSON(nodeAddr, servicesStatePath, &result); err != nil {
+		return core.ServicesStateResponse{}, err
 	}
 
 	return result, nil
 }
 
-func (client *ClusterClient) PostScaleCommand(nodeAddr string, payload scaler.ScaleCommandRequest) error {
+func (client *ClusterClient) PostScaleCommand(nodeAddr string, payload core.ScaleCommandRequest) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -112,7 +89,7 @@ func (client *ClusterClient) PostScaleCommand(nodeAddr string, payload scaler.Sc
 		return err
 	}
 
-	var result scaler.ScaleCommandResponse
+	var result core.ScaleCommandResponse
 	if err := client.doJSON(req, http.StatusOK, &result); err != nil {
 		return err
 	}

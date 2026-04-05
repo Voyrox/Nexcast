@@ -1,10 +1,9 @@
 package scaler
 
 import (
-	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"nextcast/src/shared"
 	"time"
 )
 
@@ -14,22 +13,13 @@ func postObservation(url string, req ObservationRequest) error {
 		return err
 	}
 
-	httpReq, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	httpReq, err := shared.NewRequest(http.MethodPost, url, body)
 	if err != nil {
 		return err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(httpReq)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("observation collector returned status %d", resp.StatusCode)
-	}
-
-	return nil
+	_, err = shared.Do(httpReq, client, 0)
+	return err
 }

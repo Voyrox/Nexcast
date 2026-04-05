@@ -1,9 +1,9 @@
 package scaler
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
+	"nextcast/src/shared"
 	"strings"
 	"time"
 )
@@ -19,18 +19,12 @@ func FetchTrafficMetric(rawURL string) (TrafficMetricSnapshot, error) {
 	}
 
 	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Get(url)
+	var snapshot TrafficMetricSnapshot
+	req, err := shared.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return TrafficMetricSnapshot{}, err
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 300 {
-		return TrafficMetricSnapshot{}, fmt.Errorf("metrics endpoint returned status %d", resp.StatusCode)
-	}
-
-	var snapshot TrafficMetricSnapshot
-	if err := json.NewDecoder(resp.Body).Decode(&snapshot); err != nil {
+	if err := shared.DoJSON(req, client, http.StatusOK, &snapshot); err != nil {
 		return TrafficMetricSnapshot{}, err
 	}
 	return snapshot, nil

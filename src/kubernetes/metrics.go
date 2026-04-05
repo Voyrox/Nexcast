@@ -5,16 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"nextcast/src/scaler"
+	scaler "nextcast/src/core"
 	"strings"
 )
 
 func (b *Backend) readPodMetrics(namespace string, deployment deploymentResponse, pods []podResponse) (float64, float64, bool) {
-	selector := encodeLabelSelector(deployment.Spec.Selector.MatchLabels)
-	query := url.Values{}
-	query.Set("labelSelector", selector)
-
-	respBody, err := b.client.doJSON(http.MethodGet, fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods", url.PathEscape(namespace)), query, nil, nil)
+	respBody, err := b.client.doJSON(http.MethodGet, fmt.Sprintf("/apis/metrics.k8s.io/v1beta1/namespaces/%s/pods", url.PathEscape(namespace)), labelSelectorQuery(deployment.Spec.Selector.MatchLabels), nil, nil)
 	if err != nil {
 		return 0, 0, false
 	}

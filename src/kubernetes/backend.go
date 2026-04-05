@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"nextcast/src/scaler"
+	scaler "nextcast/src/core"
 	"strings"
 )
 
