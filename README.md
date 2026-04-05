@@ -20,19 +20,24 @@ Overall `beta` and `a` should come from load testing or production observations 
 - `Docker cluster` for local Docker daemons across multiple servers
 - `Kubernetes peer` for scaling existing Kubernetes Deployments while keeping the same peer leader model. 
 
+
+<img src="./chart.png"></img>
+
 ## Table of Contents
-- [Setup](#setup)
-  - [Python](#python)
-  - [Go](#go)
-- [Running The Predictor](#running-the-predictor)
-- [Running The Autoscaler](#running-the-autoscaler)
-- [Example Workload](#example-workload)
-  - [Docker Example](#docker-example)
-  - [Kubernetes Example](#kubernetes-example)
-- [Docker and Kubernetes config](#docker-and-kubernetes-config)
-  - [Docker](#docker)
-  - [Kubernetes](#kubernetes)
-  - [API](#api)
+- [Nexcast](#nexcast)
+  - [Table of Contents](#table-of-contents)
+  - [Setup](#setup)
+    - [Python](#python)
+    - [Go](#go)
+  - [Running The Predictor](#running-the-predictor)
+  - [Running The Autoscaler](#running-the-autoscaler)
+  - [Example Workload](#example-workload)
+    - [Docker Example](#docker-example)
+    - [Kubernetes Example](#kubernetes-example)
+  - [Docker and Kubernetes config](#docker-and-kubernetes-config)
+    - [Docker](#docker)
+    - [Kubernetes](#kubernetes)
+    - [API](#api)
 
 ## Setup
 
