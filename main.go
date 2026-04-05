@@ -3,6 +3,7 @@ package main
 import (
 	"nextcast/src/api"
 	core "nextcast/src/core"
+	"nextcast/src/history"
 	"nextcast/src/kubernetes"
 	"nextcast/src/logx"
 	"time"
@@ -41,7 +42,8 @@ func main() {
 	}
 
 	clusterClient := api.NewClusterClient(config.ClusterToken)
-	app := core.NewApp(config, inventory, backend, time.Now().UTC(), clusterClient)
+	historyStore := history.NewStore("")
+	app := core.NewApp(config, inventory, backend, time.Now().UTC(), clusterClient, historyStore)
 	server := api.NewServer(app)
 	server.Start()
 

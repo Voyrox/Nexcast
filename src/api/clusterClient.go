@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	core "nextcast/src/core"
+	nexhistory "nextcast/src/history"
 	"nextcast/src/shared"
 	"time"
 )
@@ -12,6 +13,7 @@ import (
 const (
 	nodeInfoPath      = "/nodeInfo"
 	servicesStatePath = "/servicesState"
+	historyPath       = "/history"
 	scaleCommandPath  = "/scaleCommand"
 )
 
@@ -73,6 +75,15 @@ func (client *ClusterClient) FetchServicesState(nodeAddr string) (core.ServicesS
 	var result core.ServicesStateResponse
 	if err := client.fetchNodeJSON(nodeAddr, servicesStatePath, &result); err != nil {
 		return core.ServicesStateResponse{}, err
+	}
+
+	return result, nil
+}
+
+func (client *ClusterClient) FetchHistory(nodeAddr string) (nexhistory.Response, error) {
+	var result nexhistory.Response
+	if err := client.fetchNodeJSON(nodeAddr, historyPath, &result); err != nil {
+		return nexhistory.Response{}, err
 	}
 
 	return result, nil

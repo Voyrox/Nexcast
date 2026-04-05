@@ -1,6 +1,7 @@
 package scaler
 
 import (
+	nexhistory "nextcast/src/history"
 	"sync"
 	"time"
 )
@@ -22,6 +23,7 @@ const (
 type ClusterClient interface {
 	FetchNodeInfo(addr string) (NodeInfoResponse, error)
 	FetchServicesState(addr string) (ServicesStateResponse, error)
+	FetchHistory(addr string) (nexhistory.Response, error)
 	PostScaleCommand(addr string, request ScaleCommandRequest) error
 }
 
@@ -60,6 +62,7 @@ type App struct {
 	clusterClient ClusterClient
 	cooldowns     map[string]time.Time
 	rpsHistory    map[string][]float64
+	historyStore  *nexhistory.Store
 	mu            sync.RWMutex
 	leaderAddr    string
 	leaderStart   time.Time

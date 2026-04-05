@@ -36,7 +36,6 @@ $$
   - [Docker and Kubernetes config](#docker-and-kubernetes-config)
     - [Docker](#docker)
     - [Kubernetes](#kubernetes)
-    - [API](#api)
 
 ## Setup
 
@@ -190,10 +189,3 @@ Traffic metrics behavior:
 - Nexcast uses recent observed `rps` samples to smooth demand before sizing replicas
 
 See `example/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for an in-cluster example deployment.
-
-### API
-- `src/scaler/` contains the reconcile loop, leader logic, scaling policy, cooldowns, and shared backend logic.
-- `src/api/` contains the peer-to-peer HTTP API used by autoscaler nodes.
-- `src/docker/` contains Docker-specific container listing, stats, and local scaling operations.
-- `src/kubernetes/` contains Kubernetes-specific Deployment state reads, metrics reads, and replica updates.
-- `src/logx/` contains logging helpers.

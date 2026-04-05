@@ -2,12 +2,13 @@ package scaler
 
 import (
 	"fmt"
+	nexhistory "nextcast/src/history"
 	"nextcast/src/logx"
 	"sort"
 	"time"
 )
 
-func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time, client ClusterClient) *App {
+func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time, client ClusterClient, historyStore *nexhistory.Store) *App {
 	return &App{
 		config:        config,
 		inventory:     inventory,
@@ -16,6 +17,7 @@ func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, 
 		clusterClient: client,
 		cooldowns:     make(map[string]time.Time),
 		rpsHistory:    make(map[string][]float64),
+		historyStore:  historyStore,
 	}
 }
 
@@ -77,6 +79,21 @@ func (a *App) ServicesState() (ServicesStateResponse, error) {
 		StartTime: a.startTime,
 		Services:  services,
 	}, nil
+}
+
+func (a *App) History() (nexhistory.Response, error) {
+	if a.historyStore == nil {
+		return nexhistory.Response{}, nil
+	}
+	leaderAddr, _, isLeader, ready := a.leadershipSnapshot()
+	if ready && !isLeader && leaderAddr != "" {
+		response, err := a.clusterClient.FetchHistory(leaderAddr)
+		if err == nil {
+			return response, nil
+		}
+		logx.Warnf("failed to fetch leader history from %s: %v", leaderAddr, err)
+	}
+	return a.historyStore.Load()
 }
 
 func (a *App) HandleScaleCommand(request ScaleCommandRequest) (ScaleCommandResponse, int, error) {
@@ -343,7 +360,7 @@ func planTargets(aggregate clusterServiceAggregate, desired int) map[string]int 
 	return targets
 }
 
-func (a *App) buildServicePlans(clusterStates []ServicesStateResponse, reconcileTime time.Time) ([]servicePlan, bool) {
+func (a *App) buildServicePlans(clusterStates []ServicesStateResponse) ([]servicePlan, bool) {
 	plans := make([]servicePlan, 0, len(a.inventory.Services))
 	for _, service := range a.inventory.Services {
 		aggregate, ok := a.aggregateService(service, clusterStates)
@@ -353,11 +370,65 @@ func (a *App) buildServicePlans(clusterStates []ServicesStateResponse, reconcile
 		}
 
 		decision := a.desiredReplicas(aggregate)
-		a.emitObservation(reconcileTime, aggregate, decision)
 		plans = append(plans, servicePlan{aggregate: aggregate, decision: decision})
 	}
 
 	return plans, true
+}
+
+func buildClusterSnapshot(plans []servicePlan, timestamp time.Time) nexhistory.ClusterSnapshot {
+	snapshot := nexhistory.ClusterSnapshot{
+		Timestamp:    timestamp.UTC(),
+		MetricsReady: len(plans) > 0,
+		Services:     make([]nexhistory.ServiceSnapshot, 0, len(plans)),
+	}
+
+	metricsCount := 0
+	for _, plan := range plans {
+		aggregate := plan.aggregate
+		decision := plan.decision
+		snapshot.TotalReplicas += aggregate.TotalReplicas
+		snapshot.RecommendedReplicas += decision.RecommendedReplicas
+		snapshot.AppliedReplicas += decision.DesiredReplicas
+		snapshot.TotalRPS += aggregate.TotalRPS
+		if aggregate.MetricsReady {
+			snapshot.AvgCPU += aggregate.WeightedCPU
+			snapshot.AvgMem += aggregate.WeightedMem
+			metricsCount++
+		} else {
+			snapshot.MetricsReady = false
+		}
+
+		snapshot.Services = append(snapshot.Services, nexhistory.ServiceSnapshot{
+			ServiceName:         aggregate.Service.Name,
+			SystemID:            aggregate.Service.SystemID,
+			CurrentReplicas:     aggregate.TotalReplicas,
+			RecommendedReplicas: decision.RecommendedReplicas,
+			AppliedReplicas:     decision.DesiredReplicas,
+			AvgCPU:              aggregate.WeightedCPU,
+			AvgMem:              aggregate.WeightedMem,
+			RPS:                 aggregate.TotalRPS,
+			MetricsReady:        aggregate.MetricsReady,
+		})
+	}
+
+	if metricsCount > 0 {
+		snapshot.AvgCPU /= float64(metricsCount)
+		snapshot.AvgMem /= float64(metricsCount)
+	} else {
+		snapshot.MetricsReady = false
+	}
+
+	return snapshot
+}
+
+func (a *App) persistHistorySnapshot(timestamp time.Time, plans []servicePlan) {
+	if a.historyStore == nil || len(plans) == 0 {
+		return
+	}
+	if err := a.historyStore.SaveSnapshot(buildClusterSnapshot(plans, timestamp)); err != nil {
+		logx.Warnf("failed to persist cluster history: %v", err)
+	}
 }
 
 func (a *App) collectClusterStates() ([]ServicesStateResponse, bool) {
@@ -496,10 +567,6 @@ func (a *App) Reconcile() {
 		logx.Warnf("cluster visibility incomplete, skipping scaling")
 		return
 	}
-	if leaderAddr != a.config.SelfAddr {
-		logx.Infof("follower mode, leader=%s", leaderAddr)
-		return
-	}
 
 	clusterStates, ok := a.collectClusterStates()
 	if !ok {
@@ -508,9 +575,18 @@ func (a *App) Reconcile() {
 	}
 
 	reconcileTime := time.Now().UTC()
-	plans, ok := a.buildServicePlans(clusterStates, reconcileTime)
+	plans, ok := a.buildServicePlans(clusterStates)
 	if !ok {
 		return
+	}
+	a.persistHistorySnapshot(reconcileTime, plans)
+
+	if leaderAddr != a.config.SelfAddr {
+		logx.Infof("follower mode, leader=%s", leaderAddr)
+		return
+	}
+	for _, plan := range plans {
+		a.emitObservation(reconcileTime, plan.aggregate, plan.decision)
 	}
 
 	if a.backend.Mode() == BackendKubernetesPeer {

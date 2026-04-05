@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Nexcast Dashboard</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 16.5 12 4l7 12.5"></path>
+            <path d="M8.5 16.5h7"></path>
+          </svg>
+        </div>
+        <span>Nexcast</span>
+      </div>
+
+      <nav class="nav">
+        <a class="nav-item active" href="#home">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 10.5 12 3l9 7.5"></path>
+            <path d="M5.5 9.5V20h13V9.5"></path>
+          </svg>
+          <span>Home</span>
+        </a>
+        <a class="nav-item" href="#analytics">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 19.5h16"></path>
+            <path d="M7 16V10"></path>
+            <path d="M12 16V6"></path>
+            <path d="M17 16v-4"></path>
+          </svg>
+          <span>Analytics</span>
+        </a>
+      </nav>
+
+      <nav class="nav bottom">
+        <a class="nav-item" href="#settings">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09a1.7 1.7 0 0 0-1.11-1.57 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.66 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9.02 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09a1.7 1.7 0 0 0 1.56 1.57 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 8.98c0 .68.4 1.3 1.04 1.56H21a2 2 0 0 1 0 4h-.09c-.68 0-1.3.4-1.51 1.04Z"></path>
+          </svg>
+          <span>Settings</span>
+        </a>
+        <a class="nav-item" href="#support">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 20a8 8 0 1 0-8-8"></path>
+            <path d="M4 12v6"></path>
+            <path d="M20 12v6"></path>
+            <path d="M8 19h4"></path>
+            <path d="M8 10a4 4 0 0 1 8 0"></path>
+          </svg>
+          <span>Support</span>
+        </a>
+      </nav>
+    </aside>
+
+    <main class="main" id="home">
+      <div class="topbar">
+        <div class="display-tag">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M4 7h16"></path>
+            <path d="M4 17h16"></path>
+            <path d="M8 4v6"></path>
+            <path d="M16 14v6"></path>
+          </svg>
+          <span>Display</span>
+        </div>
+
+        <label class="search" aria-label="Search Clusters">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="11" cy="11" r="7"></circle>
+            <path d="m20 20-3.5-3.5"></path>
+          </svg>
+          <input id="searchInput" type="search" placeholder="Search Clusters">
+        </label>
+      </div>
+
+      <section class="connection-bar" aria-label="API Connection">
+        <form class="connection-form" id="connectionForm">
+          <label class="control" aria-label="Peer addresses">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3v6"></path>
+              <path d="M6 9h12"></path>
+              <path d="M5 21h14"></path>
+              <path d="M7 9v12"></path>
+              <path d="M17 9v12"></path>
+            </svg>
+            <input id="peersInput" type="text" placeholder="Peers: 127.0.0.1:8081,127.0.0.1:8082">
+          </label>
+          <label class="control" aria-label="Cluster token">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M7 10V7a5 5 0 0 1 10 0v3"></path>
+              <rect x="4" y="10" width="16" height="10" rx="2"></rect>
+            </svg>
+            <input id="tokenInput" type="password" placeholder="Cluster Token">
+          </label>
+          <label class="control" aria-label="Refresh interval seconds">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 8v5l3 2"></path>
+              <circle cx="12" cy="12" r="9"></circle>
+            </svg>
+            <input id="refreshInput" type="number" min="5" step="1" placeholder="20">
+          </label>
+          <div class="control compact">
+            <button type="submit">Connect</button>
+          </div>
+        </form>
+
+        <div class="status-row">
+          <div class="status-chip"><strong id="connectionStatus">Waiting for config</strong></div>
+          <div class="status-chip">Leader <strong id="leaderStatus">-</strong></div>
+          <div class="status-chip">Updated <strong id="updatedStatus">-</strong></div>
+        </div>
+      </section>
+
+      <section class="panel table-panel" aria-labelledby="cluster-overview-title">
+        <div class="panel-heading">
+          <div>
+            <div class="panel-title" id="cluster-overview-title">Cluster Overview</div>
+            <div class="panel-subtitle" id="clusterSubtitle">Connect to the Nexcast API to load live service state.</div>
+          </div>
+          <div class="panel-subtitle" id="clusterMeta">0 services loaded</div>
+        </div>
+
+        <div class="cluster-table">
+          <div class="table-header">
+            <div>Name</div>
+            <div>Stats</div>
+            <div>Health</div>
+            <div>Nodes</div>
+          </div>
+          <div class="table-body" id="tableBody">
+            <div class="empty-state" id="emptyState">Enter your peers and `CLUSTER_TOKEN`, then connect.<br>Tip: this dashboard reads `/nodeInfo` and `/servicesState` from the live Nexcast peer API.</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="charts" aria-label="Dashboard Charts">
+        <article class="panel chart-panel">
+          <div class="panel-heading">
+            <div>
+              <div class="panel-title">Instances over time</div>
+              <div class="panel-subtitle">Live snapshots from the connected cluster using recent polling history.</div>
+            </div>
+            <div class="legend" aria-hidden="true">
+              <span class="legend-item"><span class="swatch" style="background: var(--green);"></span>Actual</span>
+              <span class="legend-item"><span class="swatch" style="background: var(--blue);"></span>Predicted</span>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="instancesChart"></canvas>
+          </div>
+        </article>
+
+        <article class="panel chart-panel">
+          <div class="panel-heading">
+            <div>
+              <div class="panel-title">Node utilization</div>
+              <div class="panel-subtitle">Average CPU and memory pressure across all live service snapshots.</div>
+            </div>
+            <div class="legend" aria-hidden="true">
+              <span class="legend-item"><span class="swatch" style="background: var(--cpu);"></span>CPU</span>
+              <span class="legend-item"><span class="swatch" style="background: var(--mem);"></span>Memory</span>
+            </div>
+          </div>
+          <div class="chart-wrap">
+            <canvas id="nodeChart"></canvas>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
