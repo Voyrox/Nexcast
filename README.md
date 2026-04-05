@@ -1,17 +1,32 @@
 # Nexcast
-A TensorFlow based demand prediction project that forecasts upcoming demand and auto-deploys or undeploys services as needed across a small autoscaler cluster.
+
+Nexcast combines a TensorFlow demand predictor with a Go autoscaler. The predictor forecasts demand and returns replica recommendations, while the autoscaler coordinates scaling decisions across a small peer cluster using either Docker or Kubernetes.
+
+## Project Layout
+
+- `predictor.py` is the TensorFlow + FastAPI service. It loads the SavedModel, exposes `/predict` and `/scale`, and returns demand and replica recommendations.
+- `src/` contains the Go autoscaler.
+- `src/scaler/` contains the reconcile loop, leader logic, scaling policy, cooldowns, and shared backend logic.
+- `src/api/` contains the peer-to-peer HTTP API used by autoscaler nodes.
+- `src/docker/` contains Docker-specific container listing, stats, and local scaling operations.
+- `src/kubernetes/` contains Kubernetes-specific Deployment state reads, metrics reads, and replica updates.
+- `src/logx/` contains logging helpers.
+- `example/` contains the sample app, Docker image example, and Kubernetes manifests.
+- `model/` is the default location for the TensorFlow SavedModel loaded by `predictor.py`.
 
 ## Setup
 
+### Python
+
 TensorFlow does not install on Python 3.14 on Windows, so use Python 3.12 for this project.
 
-If `py -3.12` is not available on your machine, install Python 3.12 first from python.org or with winget:
+If `py -3.12` is not available on your machine, install Python 3.12 first:
 
 ```powershell
 winget install Python.Python.3.12
 ```
 
-Create a new virtual environment and install deps:
+Create a virtual environment and install Python dependencies:
 
 ```powershell
 py -3.12 -m venv .venv
@@ -19,12 +34,68 @@ py -3.12 -m venv .venv
 pip install -r requirements.txt
 ```
 
-## Docker Example
+### Go
+
+Make sure Go is installed, then fetch dependencies and verify the project builds:
+
+```bash
+go mod download
+go build ./...
+```
+
+## Running The Predictor
+
+Start the FastAPI predictor service:
+
+```bash
+uvicorn predictor:app --host 0.0.0.0 --port 8000
+```
+
+What `predictor.py` does:
+
+- loads the TensorFlow SavedModel from `MODEL_PATH`
+- exposes `POST /predict` for direct demand predictions
+- exposes `POST /scale` for autoscaler-friendly replica recommendations
+- blends predicted demand with current CPU and memory input before returning `recommended_replicas`
+
+Useful environment variables:
+
+- `MODEL_PATH` defaults to `model/demand_predictor`
+- `LOOKBACK` defaults to `30`
+- `HORIZON` defaults to `7`
+- `DEFAULT_SYSTEM_ID` defaults to `0`
+
+## Running The Autoscaler
+
+The Go autoscaler is started from `main.go` and uses the code in `src/`.
+
+Start it with:
+
+```bash
+go run main.go
+```
+
+What the autoscaler does:
+
+- loads runtime configuration and the shared `services.yaml` inventory
+- starts the peer API server used by other Nexcast nodes
+- elects a leader from the configured peer list
+- collects service state from the cluster
+- calls the predictor `/scale` endpoint
+- applies replica changes through the selected backend
+
+## Example Workload
+
+### Docker Example
+
+Build the sample app image:
+
 ```bash
 docker build -t example-server:latest ./example
 ```
 
-## Kubernetes Example
+### Kubernetes Example
+
 Build the example image, then apply the manifests from `example/`:
 
 ```bash
@@ -33,12 +104,7 @@ kubectl apply -f example/deployment.yaml
 kubectl apply -f example/service.yaml
 ```
 
-## API
-```bash
-uvicorn predictor:app --host 0.0.0.0 --port 8000
-```
-
-## Autoscaler Cluster
+## Cluster Modes
 
 Nexcast supports two peer-coordinated backends:
 
@@ -86,7 +152,7 @@ CHECK_INTERVAL=20s
 COOLDOWN=60s
 ```
 
-Only the leader calls the predictor `/scale` endpoint. Followers expose local state and execute leader-issued scale commands against their local Docker daemon.
+In Docker mode, only the leader calls the predictor. Followers expose local state and execute leader-issued scale commands against their local Docker daemon.
 
 ### Kubernetes Peer Backend
 
@@ -120,7 +186,7 @@ CHECK_INTERVAL=20s
 COOLDOWN=60s
 ```
 
-Kubernetes mode keeps peer-based leader election, but the leader applies cluster-wide Deployment replica changes itself. Followers report observed state and do not patch Deployments.
+In Kubernetes mode, Nexcast keeps the same peer leader-election flow, but the elected leader applies cluster-wide Deployment replica changes itself. Followers report observed state and do not patch Deployments.
 
 Metrics behavior:
 
@@ -135,8 +201,3 @@ The Kubernetes backend uses the in-cluster API by default. Override the connecti
 - `K8S_INSECURE_SKIP_TLS_VERIFY=true`
 
 See `example/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for an in-cluster example deployment.
-
-## Auto Scale App
-```bash
-go run main.go
-```
