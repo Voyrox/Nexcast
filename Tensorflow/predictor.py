@@ -15,7 +15,7 @@ MODEL_PATH = os.getenv("MODEL_PATH", "model/demand_predictor")
 LOOKBACK = int(os.getenv("LOOKBACK", "30"))
 HORIZON = int(os.getenv("HORIZON", "7"))
 DEFAULT_SYSTEM_ID = int(os.getenv("DEFAULT_SYSTEM_ID", "0"))
-OBSERVATIONS_PATH = Path(os.getenv("OBSERVATIONS_PATH", "data/training/observations.jsonl"))
+OBSERVATIONS_PATH = Path(os.getenv("OBSERVATIONS_PATH", "history/observations.jsonl"))
 
 app = FastAPI(title="Demand Predictor API", version="1.1.0")
 

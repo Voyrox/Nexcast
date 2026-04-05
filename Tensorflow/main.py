@@ -15,7 +15,7 @@ rng = np.random.default_rng(42)
 LOOKBACK = int(os.getenv("LOOKBACK", "30"))
 HORIZON = int(os.getenv("HORIZON", "7"))
 SERVICES_FILE = Path(os.getenv("SERVICES_FILE", "services.yaml"))
-OBSERVATIONS_PATH = Path(os.getenv("OBSERVATIONS_PATH", "data/training/observations.jsonl"))
+OBSERVATIONS_PATH = Path(os.getenv("OBSERVATIONS_PATH", "history/observations.jsonl"))
 FILTER_METRICS_READY = os.getenv("FILTER_METRICS_READY", "true").strip().lower() != "false"
 MODEL_OUTPUT = os.getenv("MODEL_OUTPUT", "model/demand_predictor")
 HOURS = 24 * 30
