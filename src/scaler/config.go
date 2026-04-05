@@ -77,16 +77,17 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 	}
 
 	config := RuntimeConfig{
-		Backend:       backend,
-		SelfAddr:      getenv("SELF_ADDR", ""),
-		PeerAddresses: parsePeerAddresses(getenv("PUPPETS", "")),
-		ServicesFile:  getenv("SERVICES_FILE", "services.yaml"),
-		ClusterToken:  getenv("CLUSTER_TOKEN", ""),
-		PredictorURL:  getenv("PREDICTOR_URL", "http://localhost:8000/scale"),
-		K8SNamespace:  getenv("K8S_NAMESPACE", "default"),
-		MetricsPolicy: metricsPolicy,
-		CheckInterval: interval,
-		Cooldown:      cooldown,
+		Backend:        backend,
+		SelfAddr:       getenv("SELF_ADDR", ""),
+		PeerAddresses:  parsePeerAddresses(getenv("PUPPETS", "")),
+		ServicesFile:   getenv("SERVICES_FILE", "services.yaml"),
+		ClusterToken:   getenv("CLUSTER_TOKEN", ""),
+		PredictorURL:   getenv("PREDICTOR_URL", "http://localhost:8000/scale"),
+		ObservationURL: getenv("OBSERVATION_URL", "http://localhost:8000/observations"),
+		K8SNamespace:   getenv("K8S_NAMESPACE", "default"),
+		MetricsPolicy:  metricsPolicy,
+		CheckInterval:  interval,
+		Cooldown:       cooldown,
 	}
 
 	if config.SelfAddr == "" {

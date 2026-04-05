@@ -17,14 +17,19 @@ const (
 )
 
 type ScaleRequest struct {
-	SystemID        int       `json:"system_id"`
-	CurrentReplicas int       `json:"current_replicas"`
-	CPUPerc         float64   `json:"cpu_percent"`
-	MemoryPerc      float64   `json:"memory_percent"`
-	TargetPerNode   float64   `json:"target_per_node"`
-	MinReplicas     int       `json:"min_replicas"`
-	MaxReplicas     int       `json:"max_replicas"`
-	DemandHistory   []float64 `json:"demand_history,omitempty"`
+	SystemID          int       `json:"system_id"`
+	CurrentReplicas   int       `json:"current_replicas"`
+	CPUPerc           float64   `json:"cpu_percent"`
+	MemoryPerc        float64   `json:"memory_percent"`
+	CurrentRPS        float64   `json:"current_rps,omitempty"`
+	TargetPerNode     float64   `json:"target_per_node"`
+	MinReplicas       int       `json:"min_replicas"`
+	MaxReplicas       int       `json:"max_replicas"`
+	Beta              float64   `json:"beta,omitempty"`
+	UtilizationTarget float64   `json:"utilization_target,omitempty"`
+	InterceptA        float64   `json:"a,omitempty"`
+	CoresInstance     float64   `json:"cores_instance,omitempty"`
+	DemandHistory     []float64 `json:"demand_history,omitempty"`
 }
 
 type ScaleResponse struct {
@@ -39,18 +44,24 @@ type ScaleResponse struct {
 }
 
 type ServiceConfig struct {
-	Name            string  `yaml:"name" json:"name"`
-	SystemID        int     `yaml:"system_id" json:"systemId"`
-	ImageName       string  `yaml:"image_name" json:"imageName"`
-	ContainerPrefix string  `yaml:"container_prefix" json:"containerPrefix"`
-	PortBase        int     `yaml:"port_base" json:"portBase"`
-	Namespace       string  `yaml:"namespace" json:"namespace"`
-	DeploymentName  string  `yaml:"deployment_name" json:"deploymentName"`
-	MinReplicas     int     `yaml:"min_replicas" json:"minReplicas"`
-	MaxReplicas     int     `yaml:"max_replicas" json:"maxReplicas"`
-	TargetPerNode   float64 `yaml:"target_per_node" json:"targetPerNode"`
-	ScaleUpStep     int     `yaml:"scale_up_step" json:"scaleUpStep"`
-	ScaleDownStep   int     `yaml:"scale_down_step" json:"scaleDownStep"`
+	Name              string  `yaml:"name" json:"name"`
+	SystemID          int     `yaml:"system_id" json:"systemId"`
+	ImageName         string  `yaml:"image_name" json:"imageName"`
+	ContainerPrefix   string  `yaml:"container_prefix" json:"containerPrefix"`
+	PortBase          int     `yaml:"port_base" json:"portBase"`
+	Namespace         string  `yaml:"namespace" json:"namespace"`
+	DeploymentName    string  `yaml:"deployment_name" json:"deploymentName"`
+	MetricsPath       string  `yaml:"metrics_path" json:"metricsPath"`
+	MetricsPort       int     `yaml:"metrics_port" json:"metricsPort"`
+	MinReplicas       int     `yaml:"min_replicas" json:"minReplicas"`
+	MaxReplicas       int     `yaml:"max_replicas" json:"maxReplicas"`
+	TargetPerNode     float64 `yaml:"target_per_node" json:"targetPerNode"`
+	ScaleUpStep       int     `yaml:"scale_up_step" json:"scaleUpStep"`
+	ScaleDownStep     int     `yaml:"scale_down_step" json:"scaleDownStep"`
+	Beta              float64 `yaml:"beta" json:"beta"`
+	UtilizationTarget float64 `yaml:"utilization_target" json:"utilizationTarget"`
+	InterceptA        float64 `yaml:"a" json:"a"`
+	CoresInstance     float64 `yaml:"cores_instance" json:"coresInstance"`
 }
 
 type ServicesInventory struct {
@@ -58,16 +69,33 @@ type ServicesInventory struct {
 }
 
 type RuntimeConfig struct {
-	Backend       BackendMode
-	SelfAddr      string
-	PeerAddresses []string
-	ServicesFile  string
-	ClusterToken  string
-	PredictorURL  string
-	K8SNamespace  string
-	MetricsPolicy MetricsFallbackPolicy
-	CheckInterval time.Duration
-	Cooldown      time.Duration
+	Backend        BackendMode
+	SelfAddr       string
+	PeerAddresses  []string
+	ServicesFile   string
+	ClusterToken   string
+	PredictorURL   string
+	ObservationURL string
+	K8SNamespace   string
+	MetricsPolicy  MetricsFallbackPolicy
+	CheckInterval  time.Duration
+	Cooldown       time.Duration
+}
+
+type ObservationRequest struct {
+	Timestamp           time.Time `json:"timestamp"`
+	Leader              string    `json:"leader"`
+	ServiceName         string    `json:"service_name"`
+	SystemID            int       `json:"system_id"`
+	CurrentReplicas     int       `json:"current_replicas"`
+	CPUPerc             float64   `json:"cpu_percent"`
+	MemoryPercent       float64   `json:"memory_percent"`
+	RPS                 float64   `json:"rps,omitempty"`
+	MetricsReady        bool      `json:"metrics_ready"`
+	PredictedPeak       float64   `json:"predicted_peak"`
+	BlendedPeak         float64   `json:"blended_peak"`
+	RecommendedReplicas int       `json:"recommended_replicas"`
+	AppliedReplicas     int       `json:"applied_replicas"`
 }
 
 type NodeInfoResponse struct {
@@ -85,6 +113,7 @@ type LocalServiceState struct {
 	CurrentReplicas int     `json:"currentReplicas"`
 	AvgCPU          float64 `json:"avgCPU"`
 	AvgMem          float64 `json:"avgMem"`
+	RPS             float64 `json:"rps"`
 	MetricsReady    bool    `json:"metricsReady"`
 }
 

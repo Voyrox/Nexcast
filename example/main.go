@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -13,6 +14,51 @@ import (
 	"syscall"
 	"time"
 )
+
+type rollingCounter struct {
+	mu      sync.Mutex
+	buckets [60]int64
+	seconds [60]int64
+	started time.Time
+}
+
+func newRollingCounter() *rollingCounter {
+	return &rollingCounter{started: time.Now().UTC()}
+}
+
+func (r *rollingCounter) Record(ts time.Time) {
+	second := ts.UTC().Unix()
+	idx := int(second % int64(len(r.buckets)))
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.seconds[idx] != second {
+		r.seconds[idx] = second
+		r.buckets[idx] = 0
+	}
+	r.buckets[idx]++
+}
+
+func (r *rollingCounter) RPS(now time.Time) float64 {
+	nowSecond := now.UTC().Unix()
+	cutoff := nowSecond - int64(len(r.buckets)-1)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	count := int64(0)
+	for i, second := range r.seconds {
+		if second >= cutoff && second <= nowSecond {
+			count += r.buckets[i]
+		}
+	}
+	elapsed := now.UTC().Sub(r.started).Seconds()
+	window := float64(len(r.buckets))
+	if elapsed > 0 && elapsed < window {
+		window = elapsed
+	}
+	if window <= 0 {
+		window = 1
+	}
+	return float64(count) / window
+}
 
 func main() {
 	port := os.Getenv("PORT")
@@ -32,17 +78,20 @@ func main() {
 	var concurrentConnections int64
 	var tracked sync.Map
 	var shuttingDown atomic.Bool
+	var totalRequests atomic.Int64
+	traffic := newRollingCounter()
 
-	http.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprintln(w, "nextcast example http server")
 	})
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = fmt.Fprintln(w, "ok")
 	})
 
-	http.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("/ready", func(w http.ResponseWriter, _ *http.Request) {
 		if shuttingDown.Load() {
 			http.Error(w, "shutting down", http.StatusServiceUnavailable)
 			return
@@ -52,9 +101,26 @@ func main() {
 		_, _ = fmt.Fprintln(w, "ready")
 	})
 
+	mux.HandleFunc("/metrics", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"rps":                    traffic.RPS(time.Now().UTC()),
+			"concurrent_connections": atomic.LoadInt64(&concurrentConnections),
+			"total_requests":         totalRequests.Load(),
+		})
+	})
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/metrics" && r.URL.Path != "/health" && r.URL.Path != "/ready" {
+			traffic.Record(time.Now().UTC())
+			totalRequests.Add(1)
+		}
+		mux.ServeHTTP(w, r)
+	})
+
 	server := &http.Server{
 		Addr:    ":" + port,
-		Handler: nil,
+		Handler: handler,
 		ConnState: func(c net.Conn, state http.ConnState) {
 			switch state {
 			case http.StateNew:

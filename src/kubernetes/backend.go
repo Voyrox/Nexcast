@@ -55,6 +55,9 @@ type podResponse struct {
 	Metadata struct {
 		Name string `json:"name"`
 	} `json:"metadata"`
+	Status struct {
+		PodIP string `json:"podIP"`
+	} `json:"status"`
 	Spec struct {
 		Containers []struct {
 			Name      string `json:"name"`
@@ -104,6 +107,7 @@ func (b *Backend) GetServiceState(service scaler.ServiceConfig) (scaler.LocalSer
 	}
 
 	avgCPU, avgMem, metricsReady := b.readPodMetrics(namespace, deployment, pods)
+	totalRPS := b.readPodTraffic(service, pods)
 
 	return scaler.LocalServiceState{
 		ServiceName:     service.Name,
@@ -111,6 +115,7 @@ func (b *Backend) GetServiceState(service scaler.ServiceConfig) (scaler.LocalSer
 		CurrentReplicas: int(deployment.Status.Replicas),
 		AvgCPU:          avgCPU,
 		AvgMem:          avgMem,
+		RPS:             totalRPS,
 		MetricsReady:    metricsReady,
 	}, nil
 }
@@ -303,6 +308,28 @@ func (b *Backend) readPodMetrics(namespace string, deployment deploymentResponse
 		return 0, 0, false
 	}
 	return totalCPU / float64(measuredPods), totalMem / float64(measuredPods), true
+}
+
+func (b *Backend) readPodTraffic(service scaler.ServiceConfig, pods []podResponse) float64 {
+	if strings.TrimSpace(service.MetricsPath) == "" {
+		return 0
+	}
+	port := service.MetricsPort
+	if port <= 0 {
+		return 0
+	}
+	totalRPS := 0.0
+	for _, pod := range pods {
+		if strings.TrimSpace(pod.Status.PodIP) == "" {
+			continue
+		}
+		snapshot, err := scaler.FetchTrafficMetric(fmt.Sprintf("http://%s:%d%s", pod.Status.PodIP, port, service.MetricsPath))
+		if err != nil {
+			continue
+		}
+		totalRPS += snapshot.RPS
+	}
+	return totalRPS
 }
 
 func encodeLabelSelector(matchLabels map[string]string) string {

@@ -3,8 +3,14 @@ services:
     system_id: 0
     namespace: default
     deployment_name: nextcast-example
+    metrics_path: /metrics
+    metrics_port: 8080
     min_replicas: 1
     max_replicas: 10
     target_per_node: 65.0
     scale_up_step: 2
     scale_down_step: 1
+    beta: 0.02
+    utilization_target: 0.75
+    a: 0.10
+    cores_instance: 0.50

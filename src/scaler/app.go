@@ -25,7 +25,15 @@ type clusterServiceAggregate struct {
 	TotalReplicas int
 	WeightedCPU   float64
 	WeightedMem   float64
+	TotalRPS      float64
 	MetricsReady  bool
+}
+
+type scaleDecision struct {
+	DesiredReplicas     int
+	PredictedPeak       float64
+	BlendedPeak         float64
+	RecommendedReplicas int
 }
 
 type App struct {
@@ -179,6 +187,7 @@ func aggregateDockerService(service ServiceConfig, clusterStates []ServicesState
 		aggregate.TotalReplicas += state.CurrentReplicas
 		weightedCPUSum += state.AvgCPU * float64(state.CurrentReplicas)
 		weightedMemSum += state.AvgMem * float64(state.CurrentReplicas)
+		aggregate.TotalRPS += state.RPS
 		metricsReady = metricsReady || state.MetricsReady
 	}
 
@@ -219,6 +228,7 @@ func aggregateKubernetesService(service ServiceConfig, clusterStates []ServicesS
 	}
 
 	for _, state := range aggregate.CurrentByNode {
+		aggregate.TotalRPS += state.RPS
 		if !state.MetricsReady {
 			continue
 		}
@@ -256,26 +266,31 @@ func clampInt(v, minV, maxV int) int {
 	return v
 }
 
-func (a *App) desiredReplicas(aggregate clusterServiceAggregate) int {
+func (a *App) desiredReplicas(aggregate clusterServiceAggregate) scaleDecision {
 	service := aggregate.Service
 	if aggregate.TotalReplicas < service.MinReplicas {
-		return service.MinReplicas
+		return scaleDecision{DesiredReplicas: service.MinReplicas}
 	}
 
 	request := ScaleRequest{
-		SystemID:        service.SystemID,
-		CurrentReplicas: clampInt(aggregate.TotalReplicas, 1, service.MaxReplicas),
-		CPUPerc:         aggregate.WeightedCPU,
-		MemoryPerc:      aggregate.WeightedMem,
-		TargetPerNode:   service.TargetPerNode,
-		MinReplicas:     service.MinReplicas,
-		MaxReplicas:     service.MaxReplicas,
+		SystemID:          service.SystemID,
+		CurrentReplicas:   clampInt(aggregate.TotalReplicas, 1, service.MaxReplicas),
+		CPUPerc:           aggregate.WeightedCPU,
+		MemoryPerc:        aggregate.WeightedMem,
+		CurrentRPS:        aggregate.TotalRPS,
+		TargetPerNode:     service.TargetPerNode,
+		MinReplicas:       service.MinReplicas,
+		MaxReplicas:       service.MaxReplicas,
+		Beta:              service.Beta,
+		UtilizationTarget: service.UtilizationTarget,
+		InterceptA:        service.InterceptA,
+		CoresInstance:     service.CoresInstance,
 	}
 
 	response, err := callPredictor(a.config.PredictorURL, request)
 	if err != nil {
 		logx.Errorf("predictor failed for %s: %v", service.Name, err)
-		return aggregate.TotalReplicas
+		return scaleDecision{DesiredReplicas: aggregate.TotalReplicas}
 	}
 
 	desired := response.RecommendedReplicas
@@ -295,14 +310,20 @@ func (a *App) desiredReplicas(aggregate clusterServiceAggregate) int {
 	a.mu.RUnlock()
 	if desired != aggregate.TotalReplicas && !lastScaleTime.IsZero() && time.Since(lastScaleTime) < a.config.Cooldown {
 		logx.Warnf("cooldown active for service=%s, skipping scale", service.Name)
-		return aggregate.TotalReplicas
+		return scaleDecision{
+			DesiredReplicas:     aggregate.TotalReplicas,
+			PredictedPeak:       response.PredictedPeak,
+			BlendedPeak:         response.BlendedPeak,
+			RecommendedReplicas: response.RecommendedReplicas,
+		}
 	}
 
-	logx.Eventf("service=%s current=%d cpu=%.2f mem=%.2f metrics_ready=%t predicted_peak=%.2f blended_peak=%.2f recommended=%d adjusted=%d",
+	logx.Eventf("service=%s current=%d cpu=%.2f mem=%.2f rps=%.2f metrics_ready=%t predicted_peak=%.2f blended_peak=%.2f recommended=%d adjusted=%d",
 		service.Name,
 		aggregate.TotalReplicas,
 		aggregate.WeightedCPU,
 		aggregate.WeightedMem,
+		aggregate.TotalRPS,
 		aggregate.MetricsReady,
 		response.PredictedPeak,
 		response.BlendedPeak,
@@ -310,7 +331,37 @@ func (a *App) desiredReplicas(aggregate clusterServiceAggregate) int {
 		desired,
 	)
 
-	return desired
+	return scaleDecision{
+		DesiredReplicas:     desired,
+		PredictedPeak:       response.PredictedPeak,
+		BlendedPeak:         response.BlendedPeak,
+		RecommendedReplicas: response.RecommendedReplicas,
+	}
+}
+
+func (a *App) emitObservation(timestamp time.Time, aggregate clusterServiceAggregate, decision scaleDecision) {
+	if a.config.ObservationURL == "" {
+		return
+	}
+
+	request := ObservationRequest{
+		Timestamp:           timestamp,
+		Leader:              a.config.SelfAddr,
+		ServiceName:         aggregate.Service.Name,
+		SystemID:            aggregate.Service.SystemID,
+		CurrentReplicas:     aggregate.TotalReplicas,
+		CPUPerc:             aggregate.WeightedCPU,
+		MemoryPercent:       aggregate.WeightedMem,
+		RPS:                 aggregate.TotalRPS,
+		MetricsReady:        aggregate.MetricsReady,
+		PredictedPeak:       decision.PredictedPeak,
+		BlendedPeak:         decision.BlendedPeak,
+		RecommendedReplicas: decision.RecommendedReplicas,
+		AppliedReplicas:     decision.DesiredReplicas,
+	}
+	if err := postObservation(a.config.ObservationURL, request); err != nil {
+		logx.Warnf("failed to post observation for service=%s: %v", aggregate.Service.Name, err)
+	}
 }
 
 func planTargets(aggregate clusterServiceAggregate, desired int) map[string]int {
@@ -508,6 +559,7 @@ func (a *App) Reconcile() {
 	}
 
 	if a.backend.Mode() == BackendKubernetesPeer {
+		reconcileTime := time.Now().UTC()
 		commands := make([]ServiceScaleCommand, 0, len(a.inventory.Services))
 		for _, service := range a.inventory.Services {
 			aggregate, ok := a.aggregateService(service, clusterStates)
@@ -515,11 +567,12 @@ func (a *App) Reconcile() {
 				logx.Warnf("service=%s cluster observations inconsistent, skipping scaling", service.Name)
 				return
 			}
-			desired := a.desiredReplicas(aggregate)
-			if desired == aggregate.TotalReplicas {
+			decision := a.desiredReplicas(aggregate)
+			a.emitObservation(reconcileTime, aggregate, decision)
+			if decision.DesiredReplicas == aggregate.TotalReplicas {
 				continue
 			}
-			commands = append(commands, ServiceScaleCommand{ServiceName: service.Name, DesiredReplicas: desired})
+			commands = append(commands, ServiceScaleCommand{ServiceName: service.Name, DesiredReplicas: decision.DesiredReplicas})
 		}
 		if !a.applyKubernetesTargets(commands) {
 			logx.Infof("no scaling actions applied")
@@ -528,14 +581,16 @@ func (a *App) Reconcile() {
 	}
 
 	commandsByNode := make(map[string][]ServiceScaleCommand, len(a.config.PeerAddresses))
+	reconcileTime := time.Now().UTC()
 	for _, service := range a.inventory.Services {
 		aggregate, ok := a.aggregateService(service, clusterStates)
 		if !ok {
 			logx.Warnf("service=%s cluster observations inconsistent, skipping scaling", service.Name)
 			return
 		}
-		desired := a.desiredReplicas(aggregate)
-		targets := planTargets(aggregate, desired)
+		decision := a.desiredReplicas(aggregate)
+		a.emitObservation(reconcileTime, aggregate, decision)
+		targets := planTargets(aggregate, decision.DesiredReplicas)
 		for addr, target := range targets {
 			if target == aggregate.CurrentByNode[addr].CurrentReplicas {
 				continue

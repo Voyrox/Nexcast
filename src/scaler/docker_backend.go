@@ -1,6 +1,9 @@
 package scaler
 
-import "nextcast/src/docker"
+import (
+	"fmt"
+	"nextcast/src/docker"
+)
 
 type DockerBackend struct{}
 
@@ -32,10 +35,22 @@ func (b *DockerBackend) GetServiceState(service ServiceConfig) (LocalServiceStat
 
 	avgCPU := 0.0
 	avgMem := 0.0
+	totalRPS := 0.0
 	metricsReady := len(stats) > 0
 	if metricsReady {
 		avgCPU = cpuSum / float64(len(stats))
 		avgMem = memSum / float64(len(stats))
+	}
+
+	for _, container := range containers {
+		for _, port := range docker.HostPorts(container.Ports) {
+			snapshot, err := FetchTrafficMetric(fmt.Sprintf("http://127.0.0.1:%d%s", port, service.MetricsPath))
+			if err != nil {
+				continue
+			}
+			totalRPS += snapshot.RPS
+			break
+		}
 	}
 
 	return LocalServiceState{
@@ -44,6 +59,7 @@ func (b *DockerBackend) GetServiceState(service ServiceConfig) (LocalServiceStat
 		CurrentReplicas: len(containers),
 		AvgCPU:          avgCPU,
 		AvgMem:          avgMem,
+		RPS:             totalRPS,
 		MetricsReady:    metricsReady,
 	}, nil
 }
