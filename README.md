@@ -1,6 +1,13 @@
 # Nexcast
 
-Nextcast is a autoscaler that forecats demand and returns replica recommendations, while the autoscaler coordinates scaling decisions across peer cluster using Docker or Kubernetes. Traffic is calculated using per-service traffic metrics and capactity settings from the `services.yaml`. When `beta`, `utilization_target`, `a`, and `cores_instance` are configured, the predictor can convert forecast traffic into required replicas with:
+Nexcast is an autoscaler that forecasts demand and turns that forecast into replica recommendations. It coordinates scaling decisions across a peer cluster and can operate with either Docker or Kubernetes. Traffic demand is calculated from per-service traffic metrics plus capacity settings defined in `services.yaml`.
+
+When `beta`, `utilization_target`, `a`, and `cores_instance` are configured, Nexcast can translate forecast traffic into the number of replicas a service should run. The oldest reachable node by process `startTime` becomes the leader. If any configured peer is unreachable, the cluster fails closed and skips scaling until full visibility is restored.
+
+Nexcast supports two peer-coordinated backends:
+
+- `Docker cluster` for local Docker daemons across multiple servers
+- `Kubernetes peer` for scaling existing Kubernetes Deployments while keeping the same peer leader model.
 
 $$
 \text{Cores}_{\text{total}} = \frac{\beta \cdot \text{RPS}_{\text{target}}}{\text{utilization}_{\text{target}} - a}
@@ -15,11 +22,7 @@ $$
 - `utilization_target` is the desired safe operating utilization for the service, usually kept below 1.0 to leave headroom.
 - `cores_instance` is the effective CPU capacity one replica can contribute.
 
-Overall `beta` and `a` should come from load testing or production observations per service. If they are guessed poorly, traffic-based scaling will be noisy. The oldest reachable node by process `startTime` becomes leader. If any configured peer is unreachable, the cluster fails closed and skips scaling until full visibility returns. Nexcast supports two peer-coordinated backends:
-
-- `Docker cluster` for local Docker daemons across multiple servers
-- `Kubernetes peer` for scaling existing Kubernetes Deployments while keeping the same peer leader model. 
-
+`beta` and `a` should ideally come from load testing or production observations for each service. If they are estimated poorly, traffic-based scaling will become noisy and less reliable.
 
 <img src="./chart.png"></img>
 
