@@ -1,55 +1,63 @@
 package main
 
 import (
-	"nextcast/src/api"
-	core "nextcast/src/core"
-	"nextcast/src/history"
-	"nextcast/src/kubernetes"
-	"nextcast/src/logx"
-	"time"
+	"fmt"
+	"log"
 
-	"github.com/joho/godotenv"
+	tf "github.com/galeone/tensorflow/tensorflow/go"
+	tg "github.com/galeone/tfgo"
 )
 
+const Lookback = 30
+
 func main() {
-	logx.Init()
+	model := tg.LoadModel("model/demand_predictor", []string{"serve"}, nil)
 
-	err := godotenv.Load()
+	inputTensor, err := tf.NewTensor([1][Lookback][5]float32{})
 	if err != nil {
-		logx.Warnf("no .env file loaded, using process environment")
-	}
-	config, err := core.LoadRuntimeConfig()
-	if err != nil {
-		logx.Fatalf("failed to load runtime config: %v", err)
+		log.Fatalf("failed to create input tensor: %v", err)
 	}
 
-	inventory, err := core.LoadServicesInventory(config.ServicesFile, config.Backend)
-	if err != nil {
-		logx.Fatalf("failed to load services inventory: %v", err)
-	}
-
-	var backend core.Backend
-	switch config.Backend {
-	case core.BackendDockerCluster:
-		backend = core.NewDockerBackend()
-	case core.BackendKubernetesPeer:
-		backend, err = kubernetes.NewBackend(config)
-		if err != nil {
-			logx.Fatalf("failed to initialize kubernetes backend: %v", err)
+	// Fill the tensor data
+	var sample [1][Lookback][5]float32
+	for i := 0; i < Lookback; i++ {
+		sample[0][i] = [5]float32{
+			0,                     // system_id
+			12,                    // deployed_nodes
+			float32(i % 24),       // hour_of_day
+			float32((i / 24) % 7), // day_of_week
+			50.0,                  // demand
 		}
-	default:
-		logx.Fatalf("unsupported backend: %s", config.Backend)
 	}
 
-	clusterClient := api.NewClusterClient(config.ClusterToken)
-	historyStore := history.NewStore("")
-	app := core.NewApp(config, inventory, backend, time.Now().UTC(), clusterClient, historyStore)
-	server := api.NewServer(app)
-	server.Start()
+	inputTensor, err = tf.NewTensor(sample)
+	if err != nil {
+		log.Fatalf("failed to create input tensor: %v", err)
+	}
 
-	logx.Successf("autoscaler started backend=%s self=%s peers=%d services=%d", config.Backend, config.SelfAddr, len(config.PeerAddresses), len(inventory.Services))
-	for {
-		app.Reconcile()
-		time.Sleep(app.CheckInterval())
+	results := model.Exec(
+		[]tf.Output{
+			model.Op("StatefulPartitionedCall_1", 0),
+		},
+		map[tf.Output]*tf.Tensor{
+			model.Op("serving_default_keras_tensor", 0): inputTensor,
+		},
+	)
+
+	pred, ok := results[0].Value().([][]float32)
+	if !ok {
+		log.Fatalf("unexpected output type: %T", results[0].Value())
+	}
+
+	days := []string{
+		"Monday", "Tuesday", "Wednesday", "Thursday",
+		"Friday", "Saturday", "Sunday",
+	}
+
+	fmt.Println("Predicted demand:")
+	for i, v := range pred[0] {
+		if i < len(days) {
+			fmt.Printf("%s: %.2f\n", days[i], v)
+		}
 	}
 }
