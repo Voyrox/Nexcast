@@ -30,6 +30,7 @@ $$
 - [Nexcast](#nexcast)
   - [Table of Contents](#table-of-contents)
   - [Setup](#setup)
+    - [Update deployed instances](#update-deployed-instances)
     - [Single instance](#single-instance)
   - [Example Workload](#example-workload)
     - [Docker Example](#docker-example)
@@ -75,6 +76,16 @@ What the autoscaler does:
 - Applies replica changes through the selected backend
 
 If a service exposes traffic metrics and includes capacity coefficients in `services.yaml`, Nexcast scrapes current RPS and converts that demand into replica recommendations locally.
+
+### Update deployed instances
+
+```bash
+kubectl apply -f nexcast-single.yaml
+kubectl rollout restart deployment/nexcast -n default
+kubectl rollout status deployment/nexcast -n default
+kubectl get pods -n default -l app=nexcast -o wide
+
+```
 
 ### Single instance
 
