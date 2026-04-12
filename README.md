@@ -30,6 +30,7 @@ $$
 - [Nexcast](#nexcast)
   - [Table of Contents](#table-of-contents)
   - [Setup](#setup)
+    - [Single instance](#single-instance)
   - [Example Workload](#example-workload)
     - [Docker Example](#docker-example)
     - [Kubernetes Example](#kubernetes-example)
@@ -43,10 +44,18 @@ Make sure Go is installed, then fetch dependencies and verify the project builds
 
 ```bash
 go mod download
-go build
+go build .
 ```
 
-Start it with:
+Run it locally with:
+
+```bash
+go run .
+```
+
+Nexcast loads `.env` automatically if present. If `CLUSTER_TOKEN` is not provided, it is generated automatically at startup as a 64-character alphanumeric token.
+
+Run it as a service with:
 ```bash
 sudo cp nexcast.service /etc/systemd/system/
 sudo mkdir -p /etc/nexcast
@@ -66,6 +75,12 @@ What the autoscaler does:
 - Applies replica changes through the selected backend
 
 If a service exposes traffic metrics and includes capacity coefficients in `services.yaml`, Nexcast scrapes current RPS and converts that demand into replica recommendations locally.
+
+### Single instance
+
+```bash
+kubectl apply -f k8s/nexcast-single.yaml
+```
 
 ## Example Workload
 
@@ -112,7 +127,7 @@ services:
     cores_instance: 0.50
 ```
 
-Configure each node with a unique `SELF_ADDR`, the full `PUPPETS` list, and a shared `CLUSTER_TOKEN`.
+Configure each node with a unique `SELF_ADDR` and the full `PUPPETS` list. Set a shared `CLUSTER_TOKEN` when you want multiple peers to trust each other across restarts.
 
 Example:
 
@@ -146,7 +161,7 @@ services:
     scale_down_step: 1
 ```
 
-Run multiple Nexcast peers in-cluster with shared `PUPPETS` and a shared `CLUSTER_TOKEN`.
+Run multiple Nexcast peers in-cluster with shared `PUPPETS`. Set a shared `CLUSTER_TOKEN` when you need stable peer authentication across pod restarts.
 
 ```bash
 BACKEND=kubernetes-peer
@@ -188,4 +203,10 @@ Traffic metrics behavior:
 - the built-in example app exposes `GET /metrics` with a rolling `rps` field
 - Nexcast uses recent observed `rps` samples to smooth demand before sizing replicas
 
-See `example/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for an in-cluster example deployment.
+Single-instance Kubernetes deployment:
+
+- Apply `k8s/nexcast-single.yaml` to deploy one Nexcast instance in the `default` namespace
+- The manifest intentionally does not include `services.yaml`; provide that separately and set `SERVICES_FILE` to the mounted path
+- The container image also does not bundle `services.yaml`, so inventory must be supplied at runtime
+
+See `example/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for a multi-peer in-cluster example deployment.
