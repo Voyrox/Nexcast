@@ -7,12 +7,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/joho/godotenv"
 	"nextcast/src/api"
 	scaler "nextcast/src/core"
 	nexhistory "nextcast/src/history"
 	"nextcast/src/kubernetes"
 	"nextcast/src/logx"
+
+	"github.com/joho/godotenv"
 )
 
 func buildBackend(config scaler.RuntimeConfig) (scaler.Backend, error) {
@@ -24,6 +25,15 @@ func buildBackend(config scaler.RuntimeConfig) (scaler.Backend, error) {
 	default:
 		return nil, fmt.Errorf("unsupported backend: %s", config.Backend)
 	}
+}
+
+func createDefaultServicesFile() error {
+	defaultContent := ``
+	if err := os.WriteFile("services.yaml", []byte(defaultContent), 0644); err != nil {
+		return fmt.Errorf("failed to create default services.yaml: %w", err)
+	}
+	logx.Infof("created default services.yaml")
+	return nil
 }
 
 func main() {
@@ -40,7 +50,17 @@ func main() {
 
 	inventory, err := scaler.LoadServicesInventory(config.ServicesFile, config.Backend)
 	if err != nil {
-		logx.Fatalf("failed to load services inventory: %v", err)
+		if os.IsNotExist(err) {
+			if err := createDefaultServicesFile(); err != nil {
+				logx.Fatalf("failed to create default services.yaml: %v", err)
+			}
+			inventory, err = scaler.LoadServicesInventory(config.ServicesFile, config.Backend)
+			if err != nil {
+				logx.Fatalf("failed to load services inventory after creating default: %v", err)
+			}
+		} else {
+			logx.Fatalf("failed to load services inventory: %v", err)
+		}
 	}
 
 	backend, err := buildBackend(config)

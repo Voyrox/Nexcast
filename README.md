@@ -80,6 +80,7 @@ If a service exposes traffic metrics and includes capacity coefficients in `serv
 
 ```bash
 kubectl apply -f k8s/nexcast-single.yaml
+kubectl get deploy,pods -n default -l app=nexcast -o wide
 ```
 
 ## Example Workload
