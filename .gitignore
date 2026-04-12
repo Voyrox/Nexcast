@@ -182,3 +182,4 @@ cython_debug/
 history/
 /hostory
 nextcast.exe
+*.bin
