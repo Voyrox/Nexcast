@@ -15,12 +15,8 @@ WORKDIR /app
 RUN addgroup -S netcast && adduser -S netcast -G netcast
 
 COPY --from=builder /out/netcast /app/netcast
-COPY services.yaml /app/services.yaml
-COPY views /app/views
-COPY public /app/public
 
 ENV SELF_ADDR=127.0.0.1:8081 \
-    CLUSTER_TOKEN=zyqwhK4RhVDAb4WYgKm7iF6PmXhfHYy2zISHPIFLgTsiSl7seQQ5xAWmUhXwoICh \
     SERVICES_FILE=services.yaml \
     K8S_NAMESPACE=default \
     CHECK_INTERVAL=20s \

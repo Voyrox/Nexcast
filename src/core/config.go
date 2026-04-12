@@ -1,11 +1,14 @@
 package scaler
 
 import (
+	"crypto/rand"
 	"fmt"
 	"os"
 	"strings"
 	"time"
 )
+
+const generatedTokenAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
 func getenv(key, fallback string) string {
 	v := strings.TrimSpace(os.Getenv(key))
@@ -55,6 +58,31 @@ func parseMetricsPolicy(raw string) (MetricsFallbackPolicy, error) {
 	}
 }
 
+func generateClusterToken(length int) (string, error) {
+	if length <= 0 {
+		return "", fmt.Errorf("token length must be positive")
+	}
+
+	buf := make([]byte, length)
+	maxByte := byte(256 - (256 % len(generatedTokenAlphabet)))
+	randomByte := []byte{0}
+
+	for i := range buf {
+		for {
+			if _, err := rand.Read(randomByte); err != nil {
+				return "", err
+			}
+			if randomByte[0] >= maxByte {
+				continue
+			}
+			buf[i] = generatedTokenAlphabet[int(randomByte[0])%len(generatedTokenAlphabet)]
+			break
+		}
+	}
+
+	return string(buf), nil
+}
+
 func LoadRuntimeConfig() (RuntimeConfig, error) {
 	backend, err := parseBackendMode(getenv("BACKEND", string(BackendDockerCluster)))
 	if err != nil {
@@ -78,7 +106,7 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 
 	config := RuntimeConfig{
 		Backend:        backend,
-		SelfAddr:       getenv("SELF_ADDR", ""),
+		SelfAddr:       getenv("SELF_ADDR", "127.0.0.1:8081"),
 		PeerAddresses:  parsePeerAddresses(getenv("PUPPETS", "")),
 		ServicesFile:   getenv("SERVICES_FILE", "services.yaml"),
 		ClusterToken:   getenv("CLUSTER_TOKEN", ""),
@@ -93,7 +121,14 @@ func LoadRuntimeConfig() (RuntimeConfig, error) {
 		return RuntimeConfig{}, fmt.Errorf("SELF_ADDR is required")
 	}
 	if config.ClusterToken == "" {
-		return RuntimeConfig{}, fmt.Errorf("CLUSTER_TOKEN is required")
+		generatedToken, err := generateClusterToken(64)
+		if err != nil {
+			return RuntimeConfig{}, fmt.Errorf("failed to generate CLUSTER_TOKEN: %w", err)
+		}
+		config.ClusterToken = generatedToken
+		if err := os.Setenv("CLUSTER_TOKEN", generatedToken); err != nil {
+			return RuntimeConfig{}, fmt.Errorf("failed to set generated CLUSTER_TOKEN: %w", err)
+		}
 	}
 	if len(config.PeerAddresses) == 0 {
 		config.PeerAddresses = []string{config.SelfAddr}
