@@ -1,0 +1,28 @@
+version: "1.0"
+
+configs:
+  docker:
+    provider: docker
+    demandPercent: 83.5
+    systemsDeployed: 120
+    capacityPerNode: 10
+    minReplicas: 2
+    maxReplicas: 30
+    dryRun: true
+    dockerComposeFile: docker-compose.yml
+    dockerService: api
+    kubernetesNamespace: default
+    kubernetesDeployment: ""
+
+  kubernetes:
+    provider: k8s
+    demandPercent: 68
+    systemsDeployed: 80
+    capacityPerNode: 8
+    minReplicas: 2
+    maxReplicas: 50
+    dryRun: true
+    dockerComposeFile: ""
+    dockerService: ""
+    kubernetesNamespace: production
+    kubernetesDeployment: demand-api

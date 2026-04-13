@@ -1,1 +1,13 @@
 services.yaml
+Tensorflow/
+k8s-scaler/
+.git/
+.venv/
+.vscode/
+.idea/
+*.exe
+*.env
+*.log
+*.swp
+*.swo
+model/

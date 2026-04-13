@@ -38,8 +38,7 @@ docker run --rm -p 8080:8080 example-server:latest
 Apply the example manifests from the repo root:
 
 ```bash
-kubectl apply -f example/deployment.yaml
-kubectl apply -f example/service.yaml
+kubectl apply -f example/kubernetes.yaml
 ```
 
 The deployment includes:
