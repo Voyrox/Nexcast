@@ -1,57 +1,42 @@
 package logx
 
 import (
-	"fmt"
 	"log"
 	"os"
 )
 
-const (
-	reset  = "\x1b[0m"
-	cyan   = "\x1b[36m"
-	green  = "\x1b[32m"
-	yellow = "\x1b[33m"
-	red    = "\x1b[31m"
-	blue   = "\x1b[34m"
+var (
+	infoLogger    = log.New(os.Stdout, "INFO ", log.LstdFlags|log.Lmicroseconds)
+	eventLogger   = log.New(os.Stdout, "EVENT ", log.LstdFlags|log.Lmicroseconds)
+	warnLogger    = log.New(os.Stdout, "WARN ", log.LstdFlags|log.Lmicroseconds)
+	successLogger = log.New(os.Stdout, "OK ", log.LstdFlags|log.Lmicroseconds)
+	errorLogger   = log.New(os.Stderr, "ERROR ", log.LstdFlags|log.Lmicroseconds)
 )
 
-func Init() {
-	log.SetOutput(os.Stdout)
-	log.SetFlags(log.Ldate | log.Ltime)
-}
+// Init exists to keep callers stable; logging is configured via package vars.
+func Init() {}
 
 func Infof(format string, args ...any) {
-	log.Printf(colorize("INFO", blue, format), args...)
-}
-
-func Successf(format string, args ...any) {
-	log.Printf(colorize("OK", green, format), args...)
-}
-
-func Warnf(format string, args ...any) {
-	log.Printf(colorize("WARN", yellow, format), args...)
-}
-
-func Errorf(format string, args ...any) {
-	log.Printf(colorize("ERR", red, format), args...)
+	infoLogger.Printf(format, args...)
 }
 
 func Eventf(format string, args ...any) {
-	log.Printf(colorize("NODE", cyan, format), args...)
+	eventLogger.Printf(format, args...)
+}
+
+func Warnf(format string, args ...any) {
+	warnLogger.Printf(format, args...)
+}
+
+func Successf(format string, args ...any) {
+	successLogger.Printf(format, args...)
+}
+
+func Errorf(format string, args ...any) {
+	errorLogger.Printf(format, args...)
 }
 
 func Fatalf(format string, args ...any) {
-	log.Fatalf(colorize("FATAL", red, format), args...)
-}
-
-func Fatal(message string) {
-	log.Fatal(colorizeLiteral("FATAL", red, message))
-}
-
-func colorize(level, color, format string) string {
-	return fmt.Sprintf("%s[%s]%s %s", color, level, reset, format)
-}
-
-func colorizeLiteral(level, color, message string) string {
-	return fmt.Sprintf("%s[%s]%s %s", color, level, reset, message)
+	errorLogger.Printf(format, args...)
+	os.Exit(1)
 }

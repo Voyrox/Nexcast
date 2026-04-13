@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	core "nextcast/src/core"
+	"nextcast/src/app"
 	nexhistory "nextcast/src/history"
 	"nextcast/src/shared"
 	"time"
@@ -62,19 +62,19 @@ func (client *ClusterClient) fetchNodeJSON(nodeAddr, path string, out any) error
 	return client.doJSON(req, http.StatusOK, out)
 }
 
-func (client *ClusterClient) FetchNodeInfo(nodeAddr string) (core.NodeInfoResponse, error) {
-	var result core.NodeInfoResponse
+func (client *ClusterClient) FetchNodeInfo(nodeAddr string) (app.NodeInfoResponse, error) {
+	var result app.NodeInfoResponse
 	if err := client.fetchNodeJSON(nodeAddr, nodeInfoPath, &result); err != nil {
-		return core.NodeInfoResponse{}, err
+		return app.NodeInfoResponse{}, err
 	}
 
 	return result, nil
 }
 
-func (client *ClusterClient) FetchServicesState(nodeAddr string) (core.ServicesStateResponse, error) {
-	var result core.ServicesStateResponse
+func (client *ClusterClient) FetchServicesState(nodeAddr string) (app.ServicesStateResponse, error) {
+	var result app.ServicesStateResponse
 	if err := client.fetchNodeJSON(nodeAddr, servicesStatePath, &result); err != nil {
-		return core.ServicesStateResponse{}, err
+		return app.ServicesStateResponse{}, err
 	}
 
 	return result, nil
@@ -89,7 +89,7 @@ func (client *ClusterClient) FetchHistory(nodeAddr string) (nexhistory.Response,
 	return result, nil
 }
 
-func (client *ClusterClient) PostScaleCommand(nodeAddr string, payload core.ScaleCommandRequest) error {
+func (client *ClusterClient) PostScaleCommand(nodeAddr string, payload app.ScaleCommandRequest) error {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return err
@@ -100,7 +100,7 @@ func (client *ClusterClient) PostScaleCommand(nodeAddr string, payload core.Scal
 		return err
 	}
 
-	var result core.ScaleCommandResponse
+	var result app.ScaleCommandResponse
 	if err := client.doJSON(req, http.StatusOK, &result); err != nil {
 		return err
 	}

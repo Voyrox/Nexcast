@@ -101,17 +101,16 @@ kubectl get deploy,pods -n default -l app=nexcast -o wide
 Build the sample app image:
 
 ```bash
-docker build -t example-server:latest ./example
+docker build -t example-server:latest ./example/docker
 ```
 
 ### Kubernetes Example
 
-Build the example image, then apply the manifests from `example/`:
+Build the example image, then apply the manifests from `example/kubernetes/`:
 
 ```bash
-docker build -t example-server:latest ./example
-kubectl apply -f example/deployment.yaml
-kubectl apply -f example/service.yaml
+docker build -t example-server:latest ./example/docker
+kubectl apply -f example/kubernetes/kubernetes.yaml
 ```
 
 ## Docker and Kubernetes config
@@ -221,4 +220,4 @@ Single-instance Kubernetes deployment:
 - The manifest intentionally does not include `services.yaml`; provide that separately and set `SERVICES_FILE` to the mounted path
 - The container image also does not bundle `services.yaml`, so inventory must be supplied at runtime
 
-See `example/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for a multi-peer in-cluster example deployment.
+See `example/kubernetes/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for a multi-peer in-cluster example deployment.

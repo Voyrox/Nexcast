@@ -1,96 +1,72 @@
 package main
 
 import (
-	"fmt"
+	"nextcast/src/api"
+	"nextcast/src/app"
+	nexhistory "nextcast/src/history"
+	"nextcast/src/platform/docker"
+	"nextcast/src/platform/kubernetes"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
-	"nextcast/src/api"
-	scaler "nextcast/src/core"
-	nexhistory "nextcast/src/history"
-	"nextcast/src/kubernetes"
-	"nextcast/src/logx"
-
-	"github.com/joho/godotenv"
 )
 
-func buildBackend(config scaler.RuntimeConfig) (scaler.Backend, error) {
-	switch config.Backend {
-	case scaler.BackendDockerCluster:
-		return scaler.NewDockerBackend(), nil
-	case scaler.BackendKubernetesPeer:
-		return kubernetes.NewBackend(config)
-	default:
-		return nil, fmt.Errorf("unsupported backend: %s", config.Backend)
-	}
-}
-
-func createDefaultServicesFile() error {
-	defaultContent := ``
-	if err := os.WriteFile("services.yaml", []byte(defaultContent), 0644); err != nil {
-		return fmt.Errorf("failed to create default services.yaml: %w", err)
-	}
-	logx.Infof("created default services.yaml")
-	return nil
-}
-
 func main() {
-	logx.Init()
+	app.Init()
 
-	if err := godotenv.Load(".env"); err != nil && !os.IsNotExist(err) {
-		logx.Fatalf("failed to load .env: %v", err)
+	config, err := app.LoadRuntimeConfig()
+	if err != nil {
+		app.Fatalf("failed to load config: %v", err)
 	}
 
-	config, err := scaler.LoadRuntimeConfig()
+	inventory, err := app.LoadServicesInventory(config.ServicesFile, config.Backend)
 	if err != nil {
-		logx.Fatalf("failed to load runtime config: %v", err)
+		app.Fatalf("failed to load services inventory: %v", err)
 	}
 
-	inventory, err := scaler.LoadServicesInventory(config.ServicesFile, config.Backend)
-	if err != nil {
-		if os.IsNotExist(err) {
-			if err := createDefaultServicesFile(); err != nil {
-				logx.Fatalf("failed to create default services.yaml: %v", err)
-			}
-			inventory, err = scaler.LoadServicesInventory(config.ServicesFile, config.Backend)
-			if err != nil {
-				logx.Fatalf("failed to load services inventory after creating default: %v", err)
-			}
-		} else {
-			logx.Fatalf("failed to load services inventory: %v", err)
+	var backend app.Backend
+	switch config.Backend {
+	case app.BackendDockerCluster:
+		backend = docker.NewBackend()
+	case app.BackendKubernetesPeer:
+		k8sBackend, err := kubernetes.NewBackend(config)
+		if err != nil {
+			app.Fatalf("failed to initialize kubernetes backend: %v", err)
 		}
+		backend = k8sBackend
+	default:
+		app.Fatalf("unknown backend: %s", config.Backend)
 	}
 
-	backend, err := buildBackend(config)
-	if err != nil {
-		logx.Fatalf("failed to initialize backend: %v", err)
+	startTime := time.Now().UTC()
+
+	var historyStore *nexhistory.Store
+	if config.Backend == app.BackendKubernetesPeer {
+		store := nexhistory.NewStore("history")
+		historyStore = store
 	}
 
-	client := api.NewClusterClient(config.ClusterToken)
-	historyStore := nexhistory.NewStore("src/history/data")
-	app := scaler.NewApp(config, inventory, backend, time.Now().UTC(), client, historyStore)
+	clusterClient := api.NewClusterClient(config.ClusterToken)
 
-	api.NewServer(app).Start()
-	app.Reconcile()
+	appInstance := app.NewApp(config, inventory, backend, startTime, clusterClient, historyStore)
 
-	ticker := time.NewTicker(app.CheckInterval())
-	defer ticker.Stop()
+	server := api.NewServer(appInstance)
+	server.Start()
 
-	signals := make(chan os.Signal, 1)
-	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(signals)
+	app.Infof("nexcast started in %s mode", config.Backend)
+	app.Infof("self=%s services=%d", config.SelfAddr, len(inventory.Services))
 
-	logx.Successf("nexcast started backend=%s self=%s interval=%s", config.Backend, config.SelfAddr, app.CheckInterval())
-
-	for {
-		select {
-		case <-ticker.C:
-			app.Reconcile()
-		case sig := <-signals:
-			logx.Infof("shutdown signal received: %s", sig)
-			return
+	go func() {
+		for {
+			appInstance.Reconcile()
+			time.Sleep(config.CheckInterval)
 		}
-	}
+	}()
+
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
+	<-shutdown
+
+	app.Infof("nexcast shutting down")
 }

@@ -3,19 +3,18 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	scaler "nextcast/src/core"
+	"nextcast/src/app"
 	nexhistory "nextcast/src/history"
-	"nextcast/src/logx"
 	"time"
 )
 
 type Handler interface {
 	SelfAddr() string
 	ClusterToken() string
-	NodeInfo() scaler.NodeInfoResponse
-	ServicesState() (scaler.ServicesStateResponse, error)
+	NodeInfo() app.NodeInfoResponse
+	ServicesState() (app.ServicesStateResponse, error)
 	History() (nexhistory.Response, error)
-	HandleScaleCommand(request scaler.ScaleCommandRequest) (scaler.ScaleCommandResponse, int, error)
+	HandleScaleCommand(request app.ScaleCommandRequest) (app.ScaleCommandResponse, int, error)
 }
 
 type Server struct {
@@ -86,7 +85,7 @@ func (s *Server) handleScaleCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var request scaler.ScaleCommandRequest
+	var request app.ScaleCommandRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -129,9 +128,9 @@ func (s *Server) Start() {
 	}
 
 	go func() {
-		logx.Infof("cluster API listening on %s", s.handler.SelfAddr())
+		app.Infof("cluster API listening on %s", s.handler.SelfAddr())
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logx.Fatalf("cluster API failed: %v", err)
+			app.Fatalf("cluster API failed: %v", err)
 		}
 	}()
 }
