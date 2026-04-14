@@ -42,7 +42,6 @@ type (
 	Backend     = scaler.Backend
 
 	MetricsFallbackPolicy = scaler.MetricsFallbackPolicy
-	ClusterClient         = scaler.ClusterClient
 
 	ServicesInventory = scaler.ServicesInventory
 	RuntimeConfig     = scaler.RuntimeConfig
@@ -54,16 +53,11 @@ type (
 	ServicesStateResponse = scaler.ServicesStateResponse
 
 	ObservationRequest = scaler.ObservationRequest
-
-	ServiceScaleCommand  = scaler.ServiceScaleCommand
-	ScaleCommandRequest  = scaler.ScaleCommandRequest
-	ServiceScaleResult   = scaler.ServiceScaleResult
-	ScaleCommandResponse = scaler.ScaleCommandResponse
 )
 
 const (
-	BackendDockerCluster  = scaler.BackendDockerCluster
-	BackendKubernetesPeer = scaler.BackendKubernetesPeer
+	BackendDocker     = scaler.BackendDocker
+	BackendKubernetes = scaler.BackendKubernetes
 
 	MetricsFallbackScaleUpOnly = scaler.MetricsFallbackScaleUpOnly
 	MetricsFallbackAllowBoth   = scaler.MetricsFallbackAllowBoth
@@ -81,6 +75,6 @@ func FetchTrafficMetric(rawURL string) (TrafficMetricSnapshot, error) {
 	return scaler.FetchTrafficMetric(rawURL)
 }
 
-func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time, client ClusterClient, historyStore *nexhistory.Store) *App {
-	return scaler.NewApp(config, inventory, backend, startTime, client, historyStore)
+func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time, historyStore *nexhistory.Store) *App {
+	return scaler.NewApp(config, inventory, backend, startTime, historyStore)
 }

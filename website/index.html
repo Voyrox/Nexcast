@@ -82,7 +82,7 @@
 
       <section class="connection-bar" aria-label="API Connection">
         <form class="connection-form" id="connectionForm">
-          <label class="control" aria-label="Peer addresses">
+          <label class="control" aria-label="API base URL">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M12 3v6"></path>
               <path d="M6 9h12"></path>
@@ -90,14 +90,7 @@
               <path d="M7 9v12"></path>
               <path d="M17 9v12"></path>
             </svg>
-            <input id="peersInput" type="text" placeholder="Peers: 127.0.0.1:8081,127.0.0.1:8082">
-          </label>
-          <label class="control" aria-label="Cluster token">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M7 10V7a5 5 0 0 1 10 0v3"></path>
-              <rect x="4" y="10" width="16" height="10" rx="2"></rect>
-            </svg>
-            <input id="tokenInput" type="password" placeholder="Cluster Token">
+            <input id="apiInput" type="text" placeholder="API URL: http://127.0.0.1:8081">
           </label>
           <label class="control" aria-label="Refresh interval seconds">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -135,7 +128,7 @@
             <div>Nodes</div>
           </div>
           <div class="table-body" id="tableBody">
-            <div class="empty-state" id="emptyState">Enter your peers and `CLUSTER_TOKEN`, then connect.<br>Tip: this dashboard reads `/nodeInfo` and `/servicesState` from the live Nexcast peer API.</div>
+            <div class="empty-state" id="emptyState">Enter your API URL, then connect.<br>Tip: this dashboard reads `/nodeInfo`, `/servicesState`, and `/history` from Nexcast.</div>
           </div>
         </div>
       </section>

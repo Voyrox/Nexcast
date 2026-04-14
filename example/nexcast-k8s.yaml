@@ -1,12 +1,12 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: nexcast
+  name: nextcast
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: nexcast
+  name: nextcast
 rules:
   - apiGroups: [""]
     resources: ["pods"]
@@ -24,19 +24,19 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: nexcast
+  name: nextcast
 subjects:
   - kind: ServiceAccount
-    name: nexcast
+    name: nextcast
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: nexcast
+  name: nextcast
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: nexcast-services
+  name: nextcast-services
 data:
   services.yaml: |
     services:
@@ -53,56 +53,39 @@ data:
 apiVersion: v1
 kind: Service
 metadata:
-  name: nexcast-peers
+  name: nextcast
 spec:
-  clusterIP: None
   selector:
-    app: nexcast
+    app: nextcast
   ports:
     - name: http
       port: 8081
       targetPort: 8081
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
-  name: nexcast
+  name: nextcast
 spec:
-  serviceName: nexcast-peers
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
-      app: nexcast
+      app: nextcast
   template:
     metadata:
       labels:
-        app: nexcast
+        app: nextcast
     spec:
-      serviceAccountName: nexcast
+      serviceAccountName: nextcast
       containers:
-        - name: nexcast
+        - name: nextcast
           image: nexcast:latest
           imagePullPolicy: IfNotPresent
-          command: ["/bin/sh", "-c"]
-          args:
-            - >-
-              export SELF_ADDR="${POD_NAME}.nexcast-peers.${POD_NAMESPACE}.svc.cluster.local:8081" &&
-              /app
           env:
-            - name: POD_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
-            - name: POD_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
             - name: BACKEND
-              value: kubernetes-peer
-            - name: PUPPETS
-              value: nexcast-0.nexcast-peers.default.svc.cluster.local:8081,nexcast-1.nexcast-peers.default.svc.cluster.local:8081,nexcast-2.nexcast-peers.default.svc.cluster.local:8081
-            - name: CLUSTER_TOKEN
-              value: change-me
+              value: kubernetes
+            - name: LISTEN_ADDR
+              value: ":8081"
             - name: SERVICES_FILE
               value: /etc/nexcast/services.yaml
             - name: K8S_NAMESPACE
@@ -124,4 +107,4 @@ spec:
       volumes:
         - name: services
           configMap:
-            name: nexcast-services
+            name: nextcast-services

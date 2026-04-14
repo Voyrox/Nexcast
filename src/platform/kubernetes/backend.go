@@ -18,7 +18,7 @@ func NewBackend(config app.RuntimeConfig) (*Backend, error) {
 }
 
 func (b *Backend) Mode() app.BackendMode {
-	return app.BackendKubernetesPeer
+	return app.BackendKubernetes
 }
 
 func (b *Backend) GetServiceState(service app.ServiceConfig) (app.LocalServiceState, error) {

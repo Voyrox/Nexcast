@@ -1,13 +1,13 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: nexcast
+  name: nextcast
   namespace: default
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
-  name: nexcast
+  name: nextcast
   namespace: default
 rules:
   - apiGroups: [""]
@@ -26,25 +26,25 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
-  name: nexcast
+  name: nextcast
   namespace: default
 subjects:
   - kind: ServiceAccount
-    name: nexcast
+    name: nextcast
     namespace: default
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
-  name: nexcast
+  name: nextcast
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: nexcast
+  name: nextcast
   namespace: default
 spec:
   selector:
-    app: nexcast
+    app: nextcast
   ports:
     - name: http
       port: 8081
@@ -53,21 +53,21 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nexcast
+  name: nextcast
   namespace: default
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: nexcast
+      app: nextcast
   template:
     metadata:
       labels:
-        app: nexcast
+        app: nextcast
     spec:
-      serviceAccountName: nexcast
+      serviceAccountName: nextcast
       containers:
-        - name: nexcast
+        - name: nextcast
           image: glitchedking/netcast:latest
           imagePullPolicy: Always
           ports:
@@ -82,11 +82,9 @@ spec:
               memory: 512Mi
           env:
             - name: BACKEND
-              value: kubernetes-peer
-            - name: SELF_ADDR
-              value: nexcast.default.svc.cluster.local:8081
-            - name: PUPPETS
-              value: nexcast.default.svc.cluster.local:8081
+              value: kubernetes
+            - name: LISTEN_ADDR
+              value: ":8081"
             - name: K8S_NAMESPACE
               valueFrom:
                 fieldRef:

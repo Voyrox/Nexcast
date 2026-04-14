@@ -12,7 +12,7 @@ func NewBackend() *Backend {
 }
 
 func (b *Backend) Mode() app.BackendMode {
-	return app.BackendDockerCluster
+	return app.BackendDocker
 }
 
 func (b *Backend) GetServiceState(service app.ServiceConfig) (app.LocalServiceState, error) {

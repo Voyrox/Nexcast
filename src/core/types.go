@@ -9,8 +9,8 @@ import (
 type BackendMode string
 
 const (
-	BackendDockerCluster  BackendMode = "docker-cluster"
-	BackendKubernetesPeer BackendMode = "kubernetes-peer"
+	BackendDocker     BackendMode = "docker"
+	BackendKubernetes BackendMode = "kubernetes"
 )
 
 type MetricsFallbackPolicy string
@@ -19,18 +19,6 @@ const (
 	MetricsFallbackScaleUpOnly MetricsFallbackPolicy = "scale-up-only"
 	MetricsFallbackAllowBoth   MetricsFallbackPolicy = "allow-both"
 )
-
-type ClusterClient interface {
-	FetchNodeInfo(addr string) (NodeInfoResponse, error)
-	FetchServicesState(addr string) (ServicesStateResponse, error)
-	FetchHistory(addr string) (nexhistory.Response, error)
-	PostScaleCommand(addr string, request ScaleCommandRequest) error
-}
-
-type clusterView struct {
-	Addr      string
-	StartTime time.Time
-}
 
 type clusterServiceAggregate struct {
 	Service       ServiceConfig
@@ -55,19 +43,14 @@ type servicePlan struct {
 }
 
 type App struct {
-	config        RuntimeConfig
-	inventory     ServicesInventory
-	backend       Backend
-	startTime     time.Time
-	clusterClient ClusterClient
-	cooldowns     map[string]time.Time
-	rpsHistory    map[string][]float64
-	historyStore  *nexhistory.Store
-	mu            sync.RWMutex
-	leaderAddr    string
-	leaderStart   time.Time
-	isLeader      bool
-	clusterReady  bool
+	config       RuntimeConfig
+	inventory    ServicesInventory
+	backend      Backend
+	startTime    time.Time
+	cooldowns    map[string]time.Time
+	rpsHistory   map[string][]float64
+	historyStore *nexhistory.Store
+	mu           sync.RWMutex
 }
 
 type ServiceConfig struct {
@@ -97,10 +80,8 @@ type ServicesInventory struct {
 
 type RuntimeConfig struct {
 	Backend        BackendMode
-	SelfAddr       string
-	PeerAddresses  []string
+	ListenAddr     string
 	ServicesFile   string
-	ClusterToken   string
 	ObservationURL string
 	K8SNamespace   string
 	MetricsPolicy  MetricsFallbackPolicy
@@ -147,26 +128,4 @@ type ServicesStateResponse struct {
 	SelfAddr  string              `json:"selfAddr"`
 	StartTime time.Time           `json:"startTime"`
 	Services  []LocalServiceState `json:"services"`
-}
-
-type ServiceScaleCommand struct {
-	ServiceName     string `json:"serviceName"`
-	DesiredReplicas int    `json:"desiredReplicas"`
-}
-
-type ScaleCommandRequest struct {
-	LeaderAddr      string                `json:"leaderAddr"`
-	LeaderStartTime time.Time             `json:"leaderStartTime"`
-	CommandTime     time.Time             `json:"commandTime"`
-	Commands        []ServiceScaleCommand `json:"commands"`
-}
-
-type ServiceScaleResult struct {
-	ServiceName     string `json:"serviceName"`
-	AppliedReplicas int    `json:"appliedReplicas"`
-	Error           string `json:"error,omitempty"`
-}
-
-type ScaleCommandResponse struct {
-	Results []ServiceScaleResult `json:"results"`
 }

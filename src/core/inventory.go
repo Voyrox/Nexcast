@@ -32,7 +32,7 @@ func LoadServicesInventory(path string, backend BackendMode) (ServicesInventory,
 			return ServicesInventory{}, fmt.Errorf("service name is required")
 		}
 		switch backend {
-		case BackendDockerCluster:
+		case BackendDocker:
 			if service.ImageName == "" {
 				return ServicesInventory{}, fmt.Errorf("service %s image_name is required", service.Name)
 			}
@@ -42,7 +42,7 @@ func LoadServicesInventory(path string, backend BackendMode) (ServicesInventory,
 			if service.PortBase <= 0 {
 				return ServicesInventory{}, fmt.Errorf("service %s port_base must be > 0", service.Name)
 			}
-		case BackendKubernetesPeer:
+		case BackendKubernetes:
 			if service.DeploymentName == "" {
 				return ServicesInventory{}, fmt.Errorf("service %s deployment_name is required", service.Name)
 			}

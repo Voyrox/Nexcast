@@ -27,9 +27,9 @@ func main() {
 
 	var backend app.Backend
 	switch config.Backend {
-	case app.BackendDockerCluster:
+	case app.BackendDocker:
 		backend = docker.NewBackend()
-	case app.BackendKubernetesPeer:
+	case app.BackendKubernetes:
 		k8sBackend, err := kubernetes.NewBackend(config)
 		if err != nil {
 			app.Fatalf("failed to initialize kubernetes backend: %v", err)
@@ -41,21 +41,15 @@ func main() {
 
 	startTime := time.Now().UTC()
 
-	var historyStore *nexhistory.Store
-	if config.Backend == app.BackendKubernetesPeer {
-		store := nexhistory.NewStore("history")
-		historyStore = store
-	}
+	historyStore := nexhistory.NewStore("history")
 
-	clusterClient := api.NewClusterClient(config.ClusterToken)
-
-	appInstance := app.NewApp(config, inventory, backend, startTime, clusterClient, historyStore)
+	appInstance := app.NewApp(config, inventory, backend, startTime, historyStore)
 
 	server := api.NewServer(appInstance)
 	server.Start()
 
 	app.Infof("nexcast started in %s mode", config.Backend)
-	app.Infof("self=%s services=%d", config.SelfAddr, len(inventory.Services))
+	app.Infof("listen=%s services=%d", config.ListenAddr, len(inventory.Services))
 
 	go func() {
 		for {

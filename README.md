@@ -1,13 +1,11 @@
 # Nexcast
 
-Nexcast is an autoscaler that forecasts demand and turns that forecast into replica recommendations. It coordinates scaling decisions across a peer cluster and can operate with either Docker or Kubernetes. Traffic demand is calculated from per-service traffic metrics plus capacity settings defined in `services.yaml`.
+Nexcast is a single-instance autoscaler that forecasts demand and turns that forecast into replica recommendations. It can operate with either Docker or Kubernetes. Traffic demand is calculated from per-service traffic metrics plus capacity settings defined in `services.yaml`.
 
-When `beta`, `utilization_target`, `a`, and `cores_instance` are configured, Nexcast can translate forecast traffic into the number of replicas a service should run. The oldest reachable node by process `startTime` becomes the leader. If any configured peer is unreachable, the cluster fails closed and skips scaling until full visibility is restored.
+Nexcast supports two backends:
 
-Nexcast supports two peer-coordinated backends:
-
-- `Docker cluster` for local Docker daemons across multiple servers
-- `Kubernetes peer` for scaling existing Kubernetes Deployments while keeping the same peer leader model.
+- `docker` for scaling locally-managed Docker containers
+- `kubernetes` for scaling existing Kubernetes Deployments
 
 $$
 \text{Cores}_{\text{total}} = \frac{\beta \cdot \text{RPS}_{\text{target}}}{\text{utilization}_{\text{target}} - a}
@@ -54,7 +52,7 @@ Run it locally with:
 go run .
 ```
 
-Nexcast loads `.env` automatically if present. If `CLUSTER_TOKEN` is not provided, it is generated automatically at startup as a 64-character alphanumeric token.
+Nexcast loads `.env` automatically if present.
 
 Run it as a service with:
 ```bash
@@ -68,30 +66,29 @@ sudo systemctl enable --now nexcast
 What the autoscaler does:
 
 - Loads runtime configuration and the shared `services.yaml` inventory
-- Starts the peer API server used by other Nexcast nodes
-- Elects a leader from the configured peer list based on the oldest running node
-- Collects service state from the cluster
-- Posts one cluster level observation per service per reconcile cycle to the observation collector
+- Starts an HTTP API (`/nodeInfo`, `/servicesState`, `/history`) for the dashboard
+- Collects local service state
+- Posts one observation per service per reconcile cycle to the observation collector (optional)
 - Calculates replica recommendations locally from current traffic and service capacity settings
 - Applies replica changes through the selected backend
+- Persists a rolling history snapshot for the dashboard charts
 
 If a service exposes traffic metrics and includes capacity coefficients in `services.yaml`, Nexcast scrapes current RPS and converts that demand into replica recommendations locally.
 
 ### Update deployed instances
 
 ```bash
-kubectl apply -f nexcast-single.yaml
-kubectl rollout restart deployment/nexcast -n default
-kubectl rollout status deployment/nexcast -n default
-kubectl get pods -n default -l app=nexcast -o wide
-
+kubectl apply -f nextcast.yaml
+kubectl rollout restart deployment/nextcast -n default
+kubectl rollout status deployment/nextcast -n default
+kubectl get pods -n default -l app=nextcast -o wide
 ```
 
 ### Single instance
 
 ```bash
-kubectl apply -f k8s/nexcast-single.yaml
-kubectl get deploy,pods -n default -l app=nexcast -o wide
+kubectl apply -f nextcast.yaml
+kubectl get deploy,pods -n default -l app=nextcast -o wide
 ```
 
 ## Example Workload
@@ -138,22 +135,16 @@ services:
     cores_instance: 0.50
 ```
 
-Configure each node with a unique `SELF_ADDR` and the full `PUPPETS` list. Set a shared `CLUSTER_TOKEN` when you want multiple peers to trust each other across restarts.
-
 Example:
 
 ```bash
-BACKEND=docker-cluster
-SELF_ADDR=10.0.0.11:8081
-PUPPETS=10.0.0.11:8081,10.0.0.12:8081,10.0.0.13:8081
-CLUSTER_TOKEN=change-me
+BACKEND=docker
+LISTEN_ADDR=:8081
 SERVICES_FILE=services.yaml
 CHECK_INTERVAL=20s
 COOLDOWN=60s
 OBSERVATION_URL=http://localhost:8000/observations
 ```
-
-In Docker mode, only the leader computes cluster-wide scaling decisions. Followers expose local state and execute leader-issued scale commands against their local Docker daemon.
 
 ### Kubernetes
 
@@ -172,13 +163,9 @@ services:
     scale_down_step: 1
 ```
 
-Run multiple Nexcast peers in-cluster with shared `PUPPETS`. Set a shared `CLUSTER_TOKEN` when you need stable peer authentication across pod restarts.
-
 ```bash
-BACKEND=kubernetes-peer
-SELF_ADDR=nexcast-0.nexcast-peers.default.svc.cluster.local:8081
-PUPPETS=nexcast-0.nexcast-peers.default.svc.cluster.local:8081,nexcast-1.nexcast-peers.default.svc.cluster.local:8081,nexcast-2.nexcast-peers.default.svc.cluster.local:8081
-CLUSTER_TOKEN=change-me
+BACKEND=kubernetes
+LISTEN_ADDR=:8081
 SERVICES_FILE=/etc/nexcast/services.yaml
 K8S_NAMESPACE=default
 METRICS_FALLBACK_POLICY=scale-up-only
@@ -187,8 +174,6 @@ COOLDOWN=60s
 OBSERVATION_URL=http://predictor.default.svc.cluster.local:8000/observations
 ```
 
-In Kubernetes mode, Nexcast keeps the same peer leader-election flow, but the elected leader applies cluster-wide Deployment replica changes itself. Followers report observed state and do not patch Deployments.
-
 Metrics behavior:
 
 - If the Metrics API is available, Nexcast computes CPU and memory utilization from pod usage versus pod resource requests
@@ -196,8 +181,7 @@ Metrics behavior:
 
 Training data behavior:
 
-- Only the elected leader emits observations, which avoids duplicate samples from every node
-- The leader emits one observation per service on every reconcile cycle, even when no scale action is applied
+- Nexcast emits one observation per service on every reconcile cycle, even when no scale action is applied
 - Observations can be forwarded to any external collector that accepts the JSON payload
 
 The Kubernetes backend uses the in-cluster API by default. Override the connection with these environment variables when needed:
@@ -216,8 +200,8 @@ Traffic metrics behavior:
 
 Single-instance Kubernetes deployment:
 
-- Apply `k8s/nexcast-single.yaml` to deploy one Nexcast instance in the `default` namespace
-- The manifest intentionally does not include `services.yaml`; provide that separately and set `SERVICES_FILE` to the mounted path
+- Apply `nextcast.yaml` to deploy one Nexcast instance in the `default` namespace
+- Provide `services.yaml` via a ConfigMap and set `SERVICES_FILE` to the mounted path
 - The container image also does not bundle `services.yaml`, so inventory must be supplied at runtime
 
-See `example/kubernetes/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for a multi-peer in-cluster example deployment.
+See `example/kubernetes/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for an in-cluster example deployment.

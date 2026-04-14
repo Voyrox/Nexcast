@@ -13,8 +13,7 @@
 
     const state = {
       config: {
-        peers: [],
-        token: "",
+        apiBase: "",
         refreshSeconds: DEFAULT_REFRESH_SECONDS
       },
       services: [],
@@ -27,8 +26,7 @@
     };
 
     const elements = {
-      peersInput: document.getElementById("peersInput"),
-      tokenInput: document.getElementById("tokenInput"),
+      apiInput: document.getElementById("apiInput"),
       refreshInput: document.getElementById("refreshInput"),
       searchInput: document.getElementById("searchInput"),
       connectionForm: document.getElementById("connectionForm"),
@@ -50,46 +48,43 @@
         .replaceAll("'", "&#39;");
     }
 
-    function parsePeers(raw) {
-      return raw
-        .split(",")
-        .map((value) => value.trim())
-        .filter(Boolean)
-        .filter((value, index, list) => list.indexOf(value) === index);
+    function normalizeBaseURL(raw) {
+      const value = String(raw || "").trim();
+      if (!value) return "";
+      const base = value.startsWith("http://") || value.startsWith("https://") ? value : `http://${value}`;
+      return base.replace(/\/$/, "");
     }
 
-    function toPeerURL(peer, path) {
-      const base = peer.startsWith("http://") || peer.startsWith("https://") ? peer : `http://${peer}`;
-      return `${base.replace(/\/$/, "")}${path}`;
+    function toAPIURL(apiBase, path) {
+      return `${normalizeBaseURL(apiBase)}${path}`;
     }
 
-    function getDefaultPeer() {
+    function getDefaultAPIBase() {
       if (location.protocol.startsWith("http") && location.hostname) {
-        const port = location.port && location.port !== "8081" ? ":8081" : ":8081";
-        return `${location.hostname}${port}`;
+        return `${location.hostname}:8081`;
       }
-      return "127.0.0.1:8081";
+      return "http://127.0.0.1:8081";
     }
 
     function loadConfig() {
       const params = new URLSearchParams(location.search);
-      const storedPeers = localStorage.getItem("nexcast.peers") || getDefaultPeer();
-      const storedToken = localStorage.getItem("nexcast.token") || "";
+      // Full break: legacy peer/token config is not supported.
+      localStorage.removeItem("nexcast.peers");
+      localStorage.removeItem("nexcast.token");
+
+      const storedAPIBase = localStorage.getItem("nexcast.apiBase") || getDefaultAPIBase();
       const storedRefresh = Number(localStorage.getItem("nexcast.refresh") || DEFAULT_REFRESH_SECONDS);
 
-      const peers = parsePeers(params.get("peers") || params.get("api") || storedPeers);
-      const token = (params.get("token") || storedToken).trim();
+      const apiBase = normalizeBaseURL(params.get("api") || storedAPIBase);
       const refreshSeconds = Math.max(5, Number(params.get("refresh") || storedRefresh || DEFAULT_REFRESH_SECONDS));
 
-      state.config = { peers, token, refreshSeconds };
-      elements.peersInput.value = peers.join(", ");
-      elements.tokenInput.value = token;
+      state.config = { apiBase, refreshSeconds };
+      elements.apiInput.value = apiBase;
       elements.refreshInput.value = String(refreshSeconds);
     }
 
     function persistConfig() {
-      localStorage.setItem("nexcast.peers", state.config.peers.join(","));
-      localStorage.setItem("nexcast.token", state.config.token);
+      localStorage.setItem("nexcast.apiBase", state.config.apiBase);
       localStorage.setItem("nexcast.refresh", String(state.config.refreshSeconds));
     }
 
@@ -139,11 +134,10 @@
       };
     }
 
-    async function fetchNode(address, token) {
-      const headers = { Authorization: `Bearer ${token}` };
+    async function fetchNode(apiBase) {
       const [nodeInfoResponse, servicesResponse] = await Promise.all([
-        fetch(toPeerURL(address, "/nodeInfo"), { headers }),
-        fetch(toPeerURL(address, "/servicesState"), { headers })
+        fetch(toAPIURL(apiBase, "/nodeInfo")),
+        fetch(toAPIURL(apiBase, "/servicesState"))
       ]);
 
       if (!nodeInfoResponse.ok) {
@@ -158,25 +152,15 @@
         servicesResponse.json()
       ]);
 
-      return normalizeNode(nodeInfo, servicesState, address);
+      return normalizeNode(nodeInfo, servicesState, normalizeBaseURL(apiBase));
     }
 
-    async function fetchHistoryFromPeers(peers, token) {
-      const headers = { Authorization: `Bearer ${token}` };
-
-      for (const peer of peers) {
-        try {
-          const response = await fetch(toPeerURL(peer, "/history"), { headers });
-          if (!response.ok) {
-            throw new Error(`/history ${response.status}`);
-          }
-          return await response.json();
-        } catch (error) {
-          continue;
-        }
+    async function fetchHistory(apiBase) {
+      const response = await fetch(toAPIURL(apiBase, "/history"));
+      if (!response.ok) {
+        throw new Error(`/history ${response.status}`);
       }
-
-      throw new Error("Unable to load history from any configured peer.");
+      return await response.json();
     }
 
     function aggregateServices(nodes) {
@@ -362,14 +346,14 @@
       const clusterHealthy = onlineNodes.every((node) => node.nodeInfo && node.nodeInfo.clusterHealthy);
 
       elements.connectionStatus.textContent = state.lastError
-        ? `Degraded - ${onlineNodes.length}/${state.nodes.length} peers`
+        ? "Disconnected"
         : onlineNodes.length
-          ? `Connected - ${onlineNodes.length}/${state.nodes.length} peers`
+          ? "Connected"
           : "Waiting for connection";
       elements.leaderStatus.textContent = leader && leader.nodeInfo ? leader.nodeInfo.leaderAddr || leader.address : "-";
       elements.updatedStatus.textContent = formatAgo(state.lastUpdated);
       elements.clusterSubtitle.textContent = onlineNodes.length
-        ? `Live data from ${onlineNodes.length} peer${onlineNodes.length === 1 ? "" : "s"}${offlineNodes.length ? `, ${offlineNodes.length} unreachable` : ""}. Cluster health is ${clusterHealthy ? "stable" : "partial"}.`
+        ? `Live data from the Nexcast instance. Health is ${clusterHealthy && offlineNodes.length === 0 ? "stable" : "partial"}.`
         : "Connect to the Nexcast API to load live service state.";
       elements.clusterMeta.textContent = `${state.services.length} services loaded`;
     }
@@ -500,8 +484,8 @@
     }
 
     async function refreshData() {
-      if (!state.config.peers.length || !state.config.token) {
-        state.lastError = "Missing peers or cluster token.";
+      if (!state.config.apiBase) {
+        state.lastError = "Missing API URL.";
         state.services = [];
         state.nodes = [];
         updateMeta();
@@ -510,25 +494,21 @@
         return;
       }
 
-      const results = await Promise.allSettled(
-        state.config.peers.map((peer) => fetchNode(peer, state.config.token))
-      );
+      let node;
+      try {
+        node = await fetchNode(state.config.apiBase);
+      } catch (error) {
+        node = normalizeNode(null, null, normalizeBaseURL(state.config.apiBase), error || new Error("request failed"));
+      }
 
-      state.nodes = results.map((result, index) => {
-        const peer = state.config.peers[index];
-        return result.status === "fulfilled"
-          ? result.value
-          : normalizeNode(null, null, peer, result.reason || new Error("request failed"));
-      });
-
-      const onlineNodes = state.nodes.filter((node) => node.online);
-      state.lastError = onlineNodes.length ? state.nodes.filter((node) => !node.online).map((node) => `${node.address} ${node.error}`).join(" | ") : "Unable to reach any configured peers.";
-      state.services = aggregateServices(state.nodes);
+      state.nodes = [node];
+      state.lastError = node.online ? "" : `${node.address} ${node.error}`;
+      state.services = node.online ? aggregateServices(state.nodes) : [];
       state.lastUpdated = new Date();
 
-      if (state.services.length) {
+      if (node.online && state.services.length) {
         try {
-          const historyResponse = await fetchHistoryFromPeers(state.config.peers, state.config.token);
+          const historyResponse = await fetchHistory(state.config.apiBase);
           setHistoryFromBackend(historyResponse, state.services);
         } catch (error) {
           updateHistory(state.services);
@@ -553,8 +533,7 @@
 
     elements.connectionForm.addEventListener("submit", (event) => {
       event.preventDefault();
-      state.config.peers = parsePeers(elements.peersInput.value);
-      state.config.token = elements.tokenInput.value.trim();
+      state.config.apiBase = normalizeBaseURL(elements.apiInput.value);
       state.config.refreshSeconds = Math.max(5, Number(elements.refreshInput.value || DEFAULT_REFRESH_SECONDS));
       state.history = createEmptyHistory();
       persistConfig();
@@ -572,6 +551,6 @@
     updateMeta();
     renderTable();
     renderCharts();
-    if (state.config.peers.length && state.config.token) {
+    if (state.config.apiBase) {
       startPolling();
     }

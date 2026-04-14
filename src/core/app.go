@@ -1,32 +1,25 @@
 package scaler
 
 import (
-	"fmt"
 	nexhistory "nextcast/src/history"
 	"nextcast/src/logx"
-	"sort"
 	"time"
 )
 
-func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time, client ClusterClient, historyStore *nexhistory.Store) *App {
+func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time, historyStore *nexhistory.Store) *App {
 	return &App{
-		config:        config,
-		inventory:     inventory,
-		backend:       backend,
-		startTime:     startTime.UTC(),
-		clusterClient: client,
-		cooldowns:     make(map[string]time.Time),
-		rpsHistory:    make(map[string][]float64),
-		historyStore:  historyStore,
+		config:       config,
+		inventory:    inventory,
+		backend:      backend,
+		startTime:    startTime.UTC(),
+		cooldowns:    make(map[string]time.Time),
+		rpsHistory:   make(map[string][]float64),
+		historyStore: historyStore,
 	}
 }
 
 func (a *App) SelfAddr() string {
-	return a.config.SelfAddr
-}
-
-func (a *App) ClusterToken() string {
-	return a.config.ClusterToken
+	return a.config.ListenAddr
 }
 
 func (a *App) CheckInterval() time.Duration {
@@ -41,29 +34,13 @@ func (a *App) serviceNames() []string {
 	return names
 }
 
-func (a *App) setLeadership(leaderAddr string, leaderStart time.Time, ready bool) {
-	a.mu.Lock()
-	a.leaderAddr = leaderAddr
-	a.leaderStart = leaderStart
-	a.clusterReady = ready
-	a.isLeader = ready && leaderAddr == a.config.SelfAddr
-	a.mu.Unlock()
-}
-
-func (a *App) leadershipSnapshot() (string, time.Time, bool, bool) {
-	a.mu.RLock()
-	defer a.mu.RUnlock()
-	return a.leaderAddr, a.leaderStart, a.isLeader, a.clusterReady
-}
-
 func (a *App) NodeInfo() NodeInfoResponse {
-	leaderAddr, _, isLeader, ready := a.leadershipSnapshot()
 	return NodeInfoResponse{
-		SelfAddr:       a.config.SelfAddr,
+		SelfAddr:       a.config.ListenAddr,
 		StartTime:      a.startTime,
-		IsLeader:       isLeader,
-		LeaderAddr:     leaderAddr,
-		ClusterHealthy: ready,
+		IsLeader:       true,
+		LeaderAddr:     a.config.ListenAddr,
+		ClusterHealthy: true,
 		Services:       a.serviceNames(),
 	}
 }
@@ -75,7 +52,7 @@ func (a *App) ServicesState() (ServicesStateResponse, error) {
 	}
 
 	return ServicesStateResponse{
-		SelfAddr:  a.config.SelfAddr,
+		SelfAddr:  a.config.ListenAddr,
 		StartTime: a.startTime,
 		Services:  services,
 	}, nil
@@ -85,57 +62,7 @@ func (a *App) History() (nexhistory.Response, error) {
 	if a.historyStore == nil {
 		return nexhistory.Response{}, nil
 	}
-	leaderAddr, _, isLeader, ready := a.leadershipSnapshot()
-	if ready && !isLeader && leaderAddr != "" {
-		response, err := a.clusterClient.FetchHistory(leaderAddr)
-		if err == nil {
-			return response, nil
-		}
-		logx.Warnf("failed to fetch leader history from %s: %v", leaderAddr, err)
-	}
 	return a.historyStore.Load()
-}
-
-func (a *App) HandleScaleCommand(request ScaleCommandRequest) (ScaleCommandResponse, int, error) {
-	leaderAddr, leaderStart, ready := a.evaluateLeadership()
-	a.setLeadership(leaderAddr, leaderStart, ready)
-	if !ready {
-		return ScaleCommandResponse{}, 409, fmt.Errorf("cluster visibility incomplete")
-	}
-	if request.LeaderAddr != leaderAddr || !request.LeaderStartTime.Equal(leaderStart) {
-		return ScaleCommandResponse{}, 409, fmt.Errorf("stale or invalid leader")
-	}
-	if time.Since(request.CommandTime) > (2 * a.config.CheckInterval) {
-		return ScaleCommandResponse{}, 409, fmt.Errorf("stale command")
-	}
-
-	return a.applyScaleCommands(request.Commands), 200, nil
-}
-
-func (a *App) evaluateLeadership() (string, time.Time, bool) {
-	views := make([]clusterView, 0, len(a.config.PeerAddresses))
-	for _, addr := range a.config.PeerAddresses {
-		if addr == a.config.SelfAddr {
-			views = append(views, clusterView{Addr: addr, StartTime: a.startTime})
-			continue
-		}
-
-		info, err := a.clusterClient.FetchNodeInfo(addr)
-		if err != nil {
-			logx.Warnf("peer %s unavailable: %v", addr, err)
-			return "", time.Time{}, false
-		}
-		views = append(views, clusterView{Addr: addr, StartTime: info.StartTime})
-	}
-
-	sort.Slice(views, func(i, j int) bool {
-		if views[i].StartTime.Equal(views[j].StartTime) {
-			return views[i].Addr < views[j].Addr
-		}
-		return views[i].StartTime.Before(views[j].StartTime)
-	})
-
-	return views[0].Addr, views[0].StartTime, true
 }
 
 func findServiceState(states []LocalServiceState, name string) LocalServiceState {
@@ -225,7 +152,7 @@ func aggregateKubernetesService(service ServiceConfig, clusterStates []ServicesS
 }
 
 func (a *App) aggregateService(service ServiceConfig, clusterStates []ServicesStateResponse) (clusterServiceAggregate, bool) {
-	if a.backend.Mode() == BackendKubernetesPeer {
+	if a.backend.Mode() == BackendKubernetes {
 		return aggregateKubernetesService(service, clusterStates)
 	}
 	return aggregateDockerService(service, clusterStates), true
@@ -257,7 +184,7 @@ func (a *App) desiredReplicas(aggregate clusterServiceAggregate) scaleDecision {
 		desired = clampInt(aggregate.TotalReplicas-service.ScaleDownStep, service.MinReplicas, service.MaxReplicas)
 	}
 
-	if !aggregate.MetricsReady && a.config.Backend == BackendKubernetesPeer && a.config.MetricsPolicy == MetricsFallbackScaleUpOnly && desired < aggregate.TotalReplicas {
+	if !aggregate.MetricsReady && a.config.Backend == BackendKubernetes && a.config.MetricsPolicy == MetricsFallbackScaleUpOnly && desired < aggregate.TotalReplicas {
 		logx.Warnf("metrics unavailable for service=%s, holding steady instead of scaling down", service.Name)
 		desired = aggregate.TotalReplicas
 	}
@@ -295,7 +222,7 @@ func (a *App) emitObservation(timestamp time.Time, aggregate clusterServiceAggre
 
 	request := ObservationRequest{
 		Timestamp:           timestamp,
-		Leader:              a.config.SelfAddr,
+		Leader:              a.config.ListenAddr,
 		ServiceName:         aggregate.Service.Name,
 		SystemID:            aggregate.Service.SystemID,
 		CurrentReplicas:     aggregate.TotalReplicas,
@@ -311,53 +238,6 @@ func (a *App) emitObservation(timestamp time.Time, aggregate clusterServiceAggre
 	if err := postObservation(a.config.ObservationURL, request); err != nil {
 		logx.Warnf("failed to post observation for service=%s: %v", aggregate.Service.Name, err)
 	}
-}
-
-func planTargets(aggregate clusterServiceAggregate, desired int) map[string]int {
-	targets := make(map[string]int, len(aggregate.CurrentByNode))
-	addresses := make([]string, 0, len(aggregate.CurrentByNode))
-	for addr, state := range aggregate.CurrentByNode {
-		targets[addr] = state.CurrentReplicas
-		addresses = append(addresses, addr)
-	}
-
-	sort.Strings(addresses)
-	delta := desired - aggregate.TotalReplicas
-	for delta > 0 {
-		bestAddr := addresses[0]
-		bestScore := float64(targets[bestAddr]) + aggregate.CurrentByNode[bestAddr].AvgCPU + aggregate.CurrentByNode[bestAddr].AvgMem
-		for _, addr := range addresses[1:] {
-			score := float64(targets[addr]) + aggregate.CurrentByNode[addr].AvgCPU + aggregate.CurrentByNode[addr].AvgMem
-			if score < bestScore || (score == bestScore && addr < bestAddr) {
-				bestAddr = addr
-				bestScore = score
-			}
-		}
-		targets[bestAddr]++
-		delta--
-	}
-
-	for delta < 0 {
-		bestAddr := ""
-		bestScore := -1.0
-		for _, addr := range addresses {
-			if targets[addr] == 0 {
-				continue
-			}
-			score := float64(targets[addr]) + aggregate.CurrentByNode[addr].AvgCPU + aggregate.CurrentByNode[addr].AvgMem
-			if score > bestScore || (score == bestScore && (bestAddr == "" || addr < bestAddr)) {
-				bestAddr = addr
-				bestScore = score
-			}
-		}
-		if bestAddr == "" {
-			break
-		}
-		targets[bestAddr]--
-		delta++
-	}
-
-	return targets
 }
 
 func (a *App) buildServicePlans(clusterStates []ServicesStateResponse) ([]servicePlan, bool) {
@@ -431,193 +311,48 @@ func (a *App) persistHistorySnapshot(timestamp time.Time, plans []servicePlan) {
 	}
 }
 
-func (a *App) collectClusterStates() ([]ServicesStateResponse, bool) {
-	states := make([]ServicesStateResponse, 0, len(a.config.PeerAddresses))
-	for _, addr := range a.config.PeerAddresses {
-		if addr == a.config.SelfAddr {
-			localState, err := a.ServicesState()
-			if err != nil {
-				logx.Errorf("failed to read local services state: %v", err)
-				return nil, false
-			}
-			states = append(states, localState)
-			continue
-		}
-
-		state, err := a.clusterClient.FetchServicesState(addr)
-		if err != nil {
-			logx.Errorf("failed to read services state from %s: %v", addr, err)
-			return nil, false
-		}
-		states = append(states, state)
-	}
-	return states, true
-}
-
-func (a *App) applyScaleCommands(commands []ServiceScaleCommand) ScaleCommandResponse {
-	results := make([]ServiceScaleResult, 0, len(commands))
-	servicesByName := make(map[string]ServiceConfig, len(a.inventory.Services))
-	for _, service := range a.inventory.Services {
-		servicesByName[service.Name] = service
-	}
-
-	for _, command := range commands {
-		result := ServiceScaleResult{
-			ServiceName:     command.ServiceName,
-			AppliedReplicas: command.DesiredReplicas,
-		}
-		service, ok := servicesByName[command.ServiceName]
-		if !ok {
-			result.Error = "unknown service"
-			results = append(results, result)
-			continue
-		}
-		if err := a.backend.EnsureReplicaCount(service, command.DesiredReplicas); err != nil {
-			result.Error = err.Error()
-		}
-		results = append(results, result)
-	}
-
-	return ScaleCommandResponse{Results: results}
-}
-
-func (a *App) applyKubernetesTargets(commands []ServiceScaleCommand) bool {
-	if len(commands) == 0 {
-		return false
-	}
-
-	response := a.applyScaleCommands(commands)
-	for _, result := range response.Results {
-		if result.Error != "" {
-			logx.Errorf("failed to apply kubernetes target for service %s: %s", result.ServiceName, result.Error)
-			return false
-		}
-	}
-
-	requestTime := time.Now().UTC()
-	a.mu.Lock()
-	for _, command := range commands {
-		a.cooldowns[command.ServiceName] = requestTime
-	}
-	a.mu.Unlock()
-	return true
-}
-
-func (a *App) applyDockerTargets(commandsByNode map[string][]ServiceScaleCommand) bool {
-	leaderAddr, leaderStart, _, ready := a.leadershipSnapshot()
-	if !ready {
-		return false
-	}
-
-	requestTime := time.Now().UTC()
-	scaled := false
-	for _, commands := range commandsByNode {
-		if len(commands) > 0 {
-			scaled = true
-			break
-		}
-	}
-	if !scaled {
-		return false
-	}
-
-	for addr, commands := range commandsByNode {
-		if len(commands) == 0 {
-			continue
-		}
-		request := ScaleCommandRequest{
-			LeaderAddr:      leaderAddr,
-			LeaderStartTime: leaderStart,
-			CommandTime:     requestTime,
-			Commands:        commands,
-		}
-		var err error
-		if addr == a.config.SelfAddr {
-			response := a.applyScaleCommands(commands)
-			for _, result := range response.Results {
-				if result.Error != "" {
-					err = fmt.Errorf("service %s: %s", result.ServiceName, result.Error)
-					break
-				}
-			}
-		} else {
-			err = a.clusterClient.PostScaleCommand(addr, request)
-		}
-		if err != nil {
-			logx.Errorf("failed to apply targets on %s: %v", addr, err)
-			return false
-		}
-	}
-
-	a.mu.Lock()
-	for _, commands := range commandsByNode {
-		for _, command := range commands {
-			a.cooldowns[command.ServiceName] = requestTime
-		}
-	}
-	a.mu.Unlock()
-
-	return true
-}
-
 func (a *App) Reconcile() {
-	leaderAddr, leaderStart, ready := a.evaluateLeadership()
-	a.setLeadership(leaderAddr, leaderStart, ready)
-	if !ready {
-		logx.Warnf("cluster visibility incomplete, skipping scaling")
-		return
-	}
-
-	clusterStates, ok := a.collectClusterStates()
-	if !ok {
-		logx.Warnf("failed to collect full cluster state, skipping scaling")
+	localState, err := a.ServicesState()
+	if err != nil {
+		logx.Warnf("failed to read local services state, skipping scaling: %v", err)
 		return
 	}
 
 	reconcileTime := time.Now().UTC()
-	plans, ok := a.buildServicePlans(clusterStates)
+	plans, ok := a.buildServicePlans([]ServicesStateResponse{localState})
 	if !ok {
 		return
 	}
-	a.persistHistorySnapshot(reconcileTime, plans)
-
-	if leaderAddr != a.config.SelfAddr {
-		logx.Infof("follower mode, leader=%s", leaderAddr)
+	if len(plans) == 0 {
 		return
 	}
+
+	a.persistHistorySnapshot(reconcileTime, plans)
 	for _, plan := range plans {
 		a.emitObservation(reconcileTime, plan.aggregate, plan.decision)
 	}
 
-	if a.backend.Mode() == BackendKubernetesPeer {
-		commands := make([]ServiceScaleCommand, 0, len(plans))
-		for _, plan := range plans {
-			if plan.decision.DesiredReplicas == plan.aggregate.TotalReplicas {
-				continue
-			}
-			commands = append(commands, ServiceScaleCommand{ServiceName: plan.aggregate.Service.Name, DesiredReplicas: plan.decision.DesiredReplicas})
-		}
-		if !a.applyKubernetesTargets(commands) {
-			logx.Infof("no scaling actions applied")
-		}
-		return
-	}
-
-	commandsByNode := make(map[string][]ServiceScaleCommand, len(a.config.PeerAddresses))
+	requestTime := time.Now().UTC()
+	appliedAny := false
 	for _, plan := range plans {
-		targets := planTargets(plan.aggregate, plan.decision.DesiredReplicas)
-		for addr, target := range targets {
-			if target == plan.aggregate.CurrentByNode[addr].CurrentReplicas {
-				continue
-			}
-			commandsByNode[addr] = append(commandsByNode[addr], ServiceScaleCommand{
-				ServiceName:     plan.aggregate.Service.Name,
-				DesiredReplicas: target,
-			})
+		service := plan.aggregate.Service
+		desired := plan.decision.DesiredReplicas
+		current := plan.aggregate.TotalReplicas
+		if desired == current {
+			continue
 		}
+
+		if err := a.backend.EnsureReplicaCount(service, desired); err != nil {
+			logx.Errorf("failed to apply scale for service=%s desired=%d: %v", service.Name, desired, err)
+			continue
+		}
+		appliedAny = true
+		a.mu.Lock()
+		a.cooldowns[service.Name] = requestTime
+		a.mu.Unlock()
 	}
 
-	if !a.applyDockerTargets(commandsByNode) {
+	if !appliedAny {
 		logx.Infof("no scaling actions applied")
 	}
 }
