@@ -1,6 +1,6 @@
 # Nexcast
 
-Nexcast is a single-instance autoscaler that forecasts demand and turns that forecast into replica recommendations. It can operate with either Docker or Kubernetes. Traffic demand is calculated from per-service traffic metrics plus capacity settings defined in `services.yaml`.
+Nexcast is a autoscaler that forecasts demand and turns that forecast into replica recommendations. It can operate with either Docker or Kubernetes. Traffic demand is calculated from per-service traffic metrics plus capacity settings defined in `services.yaml`.
 
 Nexcast supports two backends:
 
@@ -197,11 +197,3 @@ Traffic metrics behavior:
 - Kubernetes mode scrapes each pod via `podIP:metrics_port + metrics_path`
 - the built-in example app exposes `GET /metrics` with a rolling `rps` field
 - Nexcast uses recent observed `rps` samples to smooth demand before sizing replicas
-
-Single-instance Kubernetes deployment:
-
-- Apply `nextcast.yaml` to deploy one Nexcast instance in the `default` namespace
-- Provide `services.yaml` via a ConfigMap and set `SERVICES_FILE` to the mounted path
-- The container image also does not bundle `services.yaml`, so inventory must be supplied at runtime
-
-See `example/kubernetes/services-kubernetes.yaml` and `example/nexcast-k8s.yaml` for an in-cluster example deployment.
