@@ -179,8 +179,7 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
-history/
-/hostory
+/history/
 nextcast.exe
 *.bin
 model/
