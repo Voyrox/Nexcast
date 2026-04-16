@@ -2,7 +2,7 @@ package docker
 
 import (
 	"fmt"
-	"nextcast/src/app"
+	"nextcast/src/logx"
 	"strconv"
 	"strings"
 )
@@ -58,7 +58,7 @@ func StartContainer(image, prefix string, portBase int, existing []ContainerInfo
 		return err
 	}
 
-	app.Successf("started container %s on host port %d", name, hostPort)
+	logx.Successf("started container %s on host port %d", name, hostPort)
 	return nil
 }
 
@@ -74,6 +74,6 @@ func StopOneContainer(existing []ContainerInfo) error {
 		return err
 	}
 
-	app.Warnf("removed container %s", target.Name)
+	logx.Warnf("removed container %s", target.Name)
 	return nil
 }

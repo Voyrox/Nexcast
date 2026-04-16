@@ -3,16 +3,17 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"nextcast/src/app"
-	nexhistory "nextcast/src/history"
+	nextcast "nextcast/src/core"
+	"nextcast/src/history"
+	"nextcast/src/logx"
 	"time"
 )
 
 type Handler interface {
 	SelfAddr() string
-	NodeInfo() app.NodeInfoResponse
-	ServicesState() (app.ServicesStateResponse, error)
-	History() (nexhistory.Response, error)
+	NodeInfo() nextcast.NodeInfoResponse
+	ServicesState() (nextcast.ServicesStateResponse, error)
+	History() (history.Response, error)
 }
 
 type Server struct {
@@ -58,6 +59,7 @@ func (s *Server) handleServicesState(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, state)
 }
+
 func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
 	historyResponse, err := s.handler.History()
 	if err != nil {
@@ -81,9 +83,9 @@ func (s *Server) Start() {
 	}
 
 	go func() {
-		app.Infof("API listening on %s", s.handler.SelfAddr())
+		logx.Infof("API listening on %s", s.handler.SelfAddr())
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			app.Fatalf("API failed: %v", err)
+			logx.Fatalf("API failed: %v", err)
 		}
 	}()
 }

@@ -18,6 +18,7 @@ func nextAvailablePort(base int, existing []ContainerInfo) int {
 		}
 	}
 }
+
 func HostPorts(binding string) []int {
 	chunks := strings.Split(binding, ",")
 	ports := make([]int, 0, len(chunks))

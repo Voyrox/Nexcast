@@ -1,9 +1,9 @@
-package scaler
+package nextcast
 
 import (
 	"fmt"
 	"net/http"
-	"nextcast/src/shared"
+	"nextcast/src/util"
 	"strings"
 	"time"
 )
@@ -20,11 +20,11 @@ func FetchTrafficMetric(rawURL string) (TrafficMetricSnapshot, error) {
 
 	client := &http.Client{Timeout: 3 * time.Second}
 	var snapshot TrafficMetricSnapshot
-	req, err := shared.NewRequest(http.MethodGet, url, nil)
+	req, err := util.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return TrafficMetricSnapshot{}, err
 	}
-	if err := shared.DoJSON(req, client, http.StatusOK, &snapshot); err != nil {
+	if err := util.ReadJSON(req, client, http.StatusOK, &snapshot); err != nil {
 		return TrafficMetricSnapshot{}, err
 	}
 	return snapshot, nil

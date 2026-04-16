@@ -1,68 +1,64 @@
-package scaler
+package nextcast
 
 import (
-	nexhistory "nextcast/src/history"
+	"nextcast/src/history"
 	"nextcast/src/logx"
 	"time"
 )
 
-func NewApp(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time, historyStore *nexhistory.Store) *App {
-	return &App{
+func New(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time) *Nexcast {
+	return &Nexcast{
 		config:       config,
 		inventory:    inventory,
 		backend:      backend,
 		startTime:    startTime.UTC(),
 		cooldowns:    make(map[string]time.Time),
 		rpsHistory:   make(map[string][]float64),
-		historyStore: historyStore,
+		historyStore: history.Store,
 	}
 }
 
-func (a *App) SelfAddr() string {
-	return a.config.ListenAddr
-}
+func (n *Nexcast) SelfAddr() string { return n.config.ListenAddr }
 
-func (a *App) CheckInterval() time.Duration {
-	return a.config.CheckInterval
-}
+func (n *Nexcast) CheckInterval() time.Duration { return n.config.CheckInterval }
 
-func (a *App) serviceNames() []string {
-	names := make([]string, 0, len(a.inventory.Services))
-	for _, service := range a.inventory.Services {
+func (n *Nexcast) serviceNames() []string {
+	names := make([]string, 0, len(n.inventory.Services))
+	for _, service := range n.inventory.Services {
 		names = append(names, service.Name)
 	}
 	return names
 }
 
-func (a *App) NodeInfo() NodeInfoResponse {
+func (n *Nexcast) NodeInfo() NodeInfoResponse {
 	return NodeInfoResponse{
-		SelfAddr:       a.config.ListenAddr,
-		StartTime:      a.startTime,
+		SelfAddr:       n.config.ListenAddr,
+		StartTime:      n.startTime,
 		IsLeader:       true,
-		LeaderAddr:     a.config.ListenAddr,
+		LeaderAddr:     n.config.ListenAddr,
 		ClusterHealthy: true,
-		Services:       a.serviceNames(),
+		Services:       n.serviceNames(),
 	}
 }
 
-func (a *App) ServicesState() (ServicesStateResponse, error) {
-	services, err := GetLocalServicesState(a.inventory, a.backend)
+func (n *Nexcast) ServicesState() (ServicesStateResponse, error) {
+	services, err := GetLocalServicesState(n.inventory, n.backend)
 	if err != nil {
 		return ServicesStateResponse{}, err
 	}
 
 	return ServicesStateResponse{
-		SelfAddr:  a.config.ListenAddr,
-		StartTime: a.startTime,
+		SelfAddr:  n.config.ListenAddr,
+		StartTime: n.startTime,
 		Services:  services,
 	}, nil
 }
 
-func (a *App) History() (nexhistory.Response, error) {
-	if a.historyStore == nil {
-		return nexhistory.Response{}, nil
+func (n *Nexcast) History() (history.Response, error) {
+	if n.historyStore == nil {
+		return history.Response{}, nil
 	}
-	return a.historyStore.Load()
+	return n.historyStore.Load()
 }
 
 func findServiceState(states []LocalServiceState, name string) LocalServiceState {
@@ -151,8 +147,8 @@ func aggregateKubernetesService(service ServiceConfig, clusterStates []ServicesS
 	return aggregate, true
 }
 
-func (a *App) aggregateService(service ServiceConfig, clusterStates []ServicesStateResponse) (clusterServiceAggregate, bool) {
-	if a.backend.Mode() == BackendKubernetes {
+func (n *Nexcast) aggregateService(service ServiceConfig, clusterStates []ServicesStateResponse) (clusterServiceAggregate, bool) {
+	if n.backend.Mode() == BackendKubernetes {
 		return aggregateKubernetesService(service, clusterStates)
 	}
 	return aggregateDockerService(service, clusterStates), true
@@ -168,14 +164,14 @@ func clampInt(v, minV, maxV int) int {
 	return v
 }
 
-func (a *App) desiredReplicas(aggregate clusterServiceAggregate) scaleDecision {
+func (n *Nexcast) desiredReplicas(aggregate clusterServiceAggregate) scaleDecision {
 	service := aggregate.Service
 	if aggregate.TotalReplicas < service.MinReplicas {
 		return scaleDecision{DesiredReplicas: service.MinReplicas}
 	}
 
-	history := a.recordRPS(service.Name, aggregate.TotalRPS)
-	decision := calculateScaleRecommendation(service, aggregate.TotalReplicas, aggregate.TotalRPS, history)
+	historySamples := n.recordRPS(service.Name, aggregate.TotalRPS)
+	decision := calculateScaleRecommendation(service, aggregate.TotalReplicas, aggregate.TotalRPS, historySamples)
 
 	desired := decision.RecommendedReplicas
 	if desired > aggregate.TotalReplicas {
@@ -184,15 +180,15 @@ func (a *App) desiredReplicas(aggregate clusterServiceAggregate) scaleDecision {
 		desired = clampInt(aggregate.TotalReplicas-service.ScaleDownStep, service.MinReplicas, service.MaxReplicas)
 	}
 
-	if !aggregate.MetricsReady && a.config.Backend == BackendKubernetes && a.config.MetricsPolicy == MetricsFallbackScaleUpOnly && desired < aggregate.TotalReplicas {
+	if !aggregate.MetricsReady && n.config.Backend == BackendKubernetes && n.config.MetricsPolicy == MetricsFallbackScaleUpOnly && desired < aggregate.TotalReplicas {
 		logx.Warnf("metrics unavailable for service=%s, holding steady instead of scaling down", service.Name)
 		desired = aggregate.TotalReplicas
 	}
 
-	a.mu.RLock()
-	lastScaleTime := a.cooldowns[service.Name]
-	a.mu.RUnlock()
-	if desired != aggregate.TotalReplicas && !lastScaleTime.IsZero() && time.Since(lastScaleTime) < a.config.Cooldown {
+	n.mu.RLock()
+	lastScaleTime := n.cooldowns[service.Name]
+	n.mu.RUnlock()
+	if desired != aggregate.TotalReplicas && !lastScaleTime.IsZero() && time.Since(lastScaleTime) < n.config.Cooldown {
 		logx.Warnf("cooldown active for service=%s, skipping scale", service.Name)
 		decision.DesiredReplicas = aggregate.TotalReplicas
 		return decision
@@ -215,14 +211,14 @@ func (a *App) desiredReplicas(aggregate clusterServiceAggregate) scaleDecision {
 	return decision
 }
 
-func (a *App) emitObservation(timestamp time.Time, aggregate clusterServiceAggregate, decision scaleDecision) {
-	if a.config.ObservationURL == "" {
+func (n *Nexcast) emitObservation(timestamp time.Time, aggregate clusterServiceAggregate, decision scaleDecision) {
+	if n.config.ObservationURL == "" {
 		return
 	}
 
 	request := ObservationRequest{
 		Timestamp:           timestamp,
-		Leader:              a.config.ListenAddr,
+		Leader:              n.config.ListenAddr,
 		ServiceName:         aggregate.Service.Name,
 		SystemID:            aggregate.Service.SystemID,
 		CurrentReplicas:     aggregate.TotalReplicas,
@@ -235,32 +231,32 @@ func (a *App) emitObservation(timestamp time.Time, aggregate clusterServiceAggre
 		RecommendedReplicas: decision.RecommendedReplicas,
 		AppliedReplicas:     decision.DesiredReplicas,
 	}
-	if err := postObservation(a.config.ObservationURL, request); err != nil {
+	if err := postObservation(n.config.ObservationURL, request); err != nil {
 		logx.Warnf("failed to post observation for service=%s: %v", aggregate.Service.Name, err)
 	}
 }
 
-func (a *App) buildServicePlans(clusterStates []ServicesStateResponse) ([]servicePlan, bool) {
-	plans := make([]servicePlan, 0, len(a.inventory.Services))
-	for _, service := range a.inventory.Services {
-		aggregate, ok := a.aggregateService(service, clusterStates)
+func (n *Nexcast) buildServicePlans(clusterStates []ServicesStateResponse) ([]servicePlan, bool) {
+	plans := make([]servicePlan, 0, len(n.inventory.Services))
+	for _, service := range n.inventory.Services {
+		aggregate, ok := n.aggregateService(service, clusterStates)
 		if !ok {
 			logx.Warnf("service=%s cluster observations inconsistent, skipping scaling", service.Name)
 			return nil, false
 		}
 
-		decision := a.desiredReplicas(aggregate)
+		decision := n.desiredReplicas(aggregate)
 		plans = append(plans, servicePlan{aggregate: aggregate, decision: decision})
 	}
 
 	return plans, true
 }
 
-func buildClusterSnapshot(plans []servicePlan, timestamp time.Time) nexhistory.ClusterSnapshot {
-	snapshot := nexhistory.ClusterSnapshot{
+func buildClusterSnapshot(plans []servicePlan, timestamp time.Time) history.ClusterSnapshot {
+	snapshot := history.ClusterSnapshot{
 		Timestamp:    timestamp.UTC(),
 		MetricsReady: len(plans) > 0,
-		Services:     make([]nexhistory.ServiceSnapshot, 0, len(plans)),
+		Services:     make([]history.ServiceSnapshot, 0, len(plans)),
 	}
 
 	metricsCount := 0
@@ -279,7 +275,7 @@ func buildClusterSnapshot(plans []servicePlan, timestamp time.Time) nexhistory.C
 			snapshot.MetricsReady = false
 		}
 
-		snapshot.Services = append(snapshot.Services, nexhistory.ServiceSnapshot{
+		snapshot.Services = append(snapshot.Services, history.ServiceSnapshot{
 			ServiceName:         aggregate.Service.Name,
 			SystemID:            aggregate.Service.SystemID,
 			CurrentReplicas:     aggregate.TotalReplicas,
@@ -302,24 +298,24 @@ func buildClusterSnapshot(plans []servicePlan, timestamp time.Time) nexhistory.C
 	return snapshot
 }
 
-func (a *App) persistHistorySnapshot(timestamp time.Time, plans []servicePlan) {
-	if a.historyStore == nil || len(plans) == 0 {
+func (n *Nexcast) persistHistorySnapshot(timestamp time.Time, plans []servicePlan) {
+	if n.historyStore == nil || len(plans) == 0 {
 		return
 	}
-	if err := a.historyStore.SaveSnapshot(buildClusterSnapshot(plans, timestamp)); err != nil {
+	if err := n.historyStore.SaveSnapshot(buildClusterSnapshot(plans, timestamp)); err != nil {
 		logx.Warnf("failed to persist cluster history: %v", err)
 	}
 }
 
-func (a *App) Reconcile() {
-	localState, err := a.ServicesState()
+func (n *Nexcast) Reconcile() {
+	localState, err := n.ServicesState()
 	if err != nil {
 		logx.Warnf("failed to read local services state, skipping scaling: %v", err)
 		return
 	}
 
 	reconcileTime := time.Now().UTC()
-	plans, ok := a.buildServicePlans([]ServicesStateResponse{localState})
+	plans, ok := n.buildServicePlans([]ServicesStateResponse{localState})
 	if !ok {
 		return
 	}
@@ -327,9 +323,9 @@ func (a *App) Reconcile() {
 		return
 	}
 
-	a.persistHistorySnapshot(reconcileTime, plans)
+	n.persistHistorySnapshot(reconcileTime, plans)
 	for _, plan := range plans {
-		a.emitObservation(reconcileTime, plan.aggregate, plan.decision)
+		n.emitObservation(reconcileTime, plan.aggregate, plan.decision)
 	}
 
 	requestTime := time.Now().UTC()
@@ -342,14 +338,14 @@ func (a *App) Reconcile() {
 			continue
 		}
 
-		if err := a.backend.EnsureReplicaCount(service, desired); err != nil {
+		if err := n.backend.EnsureReplicaCount(service, desired); err != nil {
 			logx.Errorf("failed to apply scale for service=%s desired=%d: %v", service.Name, desired, err)
 			continue
 		}
 		appliedAny = true
-		a.mu.Lock()
-		a.cooldowns[service.Name] = requestTime
-		a.mu.Unlock()
+		n.mu.Lock()
+		n.cooldowns[service.Name] = requestTime
+		n.mu.Unlock()
 	}
 
 	if !appliedAny {

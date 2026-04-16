@@ -1,59 +1,62 @@
 package main
 
 import (
-	"nextcast/src/api"
-	"nextcast/src/app"
-	nexhistory "nextcast/src/history"
-	"nextcast/src/platform/docker"
-	"nextcast/src/platform/kubernetes"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"nextcast/src/api"
+	nextcast "nextcast/src/core"
+	"nextcast/src/history"
+	"nextcast/src/logx"
+	"nextcast/src/platforms/docker"
+	"nextcast/src/platforms/kubernetes"
+	"nextcast/src/util"
 )
 
 func main() {
-	app.Init()
+	util.LoadEnv()
+	logx.Init()
 
-	config, err := app.LoadRuntimeConfig()
+	config, err := nextcast.LoadConfig()
 	if err != nil {
-		app.Fatalf("failed to load config: %v", err)
+		logx.Fatalf("failed to load config: %v", err)
 	}
 
-	inventory, err := app.LoadServicesInventory(config.ServicesFile, config.Backend)
+	inventory, err := nextcast.LoadServicesInventory(config.ServicesFile, config.Backend)
 	if err != nil {
-		app.Fatalf("failed to load services inventory: %v", err)
+		logx.Fatalf("failed to load services inventory: %v", err)
 	}
 
-	var backend app.Backend
+	history.Init("history")
+
+	var backend nextcast.Backend
 	switch config.Backend {
-	case app.BackendDocker:
+	case nextcast.BackendDocker:
 		backend = docker.NewBackend()
-	case app.BackendKubernetes:
+	case nextcast.BackendKubernetes:
 		k8sBackend, err := kubernetes.NewBackend(config)
 		if err != nil {
-			app.Fatalf("failed to initialize kubernetes backend: %v", err)
+			logx.Fatalf("failed to initialize kubernetes backend: %v", err)
 		}
 		backend = k8sBackend
 	default:
-		app.Fatalf("unknown backend: %s", config.Backend)
+		logx.Fatalf("unknown backend: %s", config.Backend)
 	}
 
 	startTime := time.Now().UTC()
 
-	historyStore := nexhistory.NewStore("history")
-
-	appInstance := app.NewApp(config, inventory, backend, startTime, historyStore)
-
-	server := api.NewServer(appInstance)
+	app := nextcast.New(config, inventory, backend, startTime)
+	server := api.NewServer(app)
 	server.Start()
 
-	app.Infof("nexcast started in %s mode", config.Backend)
-	app.Infof("listen=%s services=%d", config.ListenAddr, len(inventory.Services))
+	logx.Infof("nexcast started in %s mode", config.Backend)
+	logx.Infof("listen=%s services=%d", config.ListenAddr, len(inventory.Services))
 
 	go func() {
 		for {
-			appInstance.Reconcile()
+			app.Reconcile()
 			time.Sleep(config.CheckInterval)
 		}
 	}()
@@ -62,5 +65,5 @@ func main() {
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM)
 	<-shutdown
 
-	app.Infof("nexcast shutting down")
+	logx.Infof("nexcast shutting down")
 }

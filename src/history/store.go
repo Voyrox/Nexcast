@@ -18,14 +18,20 @@ const (
 	defaultDataPath = "history"
 )
 
-func NewStore(dir string) *Store {
+var Store *StoreImpl
+
+func Init(dir string) {
+	Store = NewStore(dir)
+}
+
+func NewStore(dir string) *StoreImpl {
 	if strings.TrimSpace(dir) == "" {
 		dir = defaultDataPath
 	}
-	return &Store{dir: dir}
+	return &StoreImpl{dir: dir}
 }
 
-func (s *Store) SaveSnapshot(snapshot ClusterSnapshot) error {
+func (s *StoreImpl) SaveSnapshot(snapshot ClusterSnapshot) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -58,7 +64,7 @@ func (s *Store) SaveSnapshot(snapshot ClusterSnapshot) error {
 	return s.pruneLocked()
 }
 
-func (s *Store) Load() (Response, error) {
+func (s *StoreImpl) Load() (Response, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -87,12 +93,12 @@ func (s *Store) Load() (Response, error) {
 	return resp, nil
 }
 
-func (s *Store) readDayLocked(dayKey string) (dayFile, error) {
+func (s *StoreImpl) readDayLocked(dayKey string) (dayFile, error) {
 	path := filepath.Join(s.dir, dayKey+dataFileSuffix)
 	return s.readDayFromPathLocked(path)
 }
 
-func (s *Store) readDayFromPathLocked(path string) (dayFile, error) {
+func (s *StoreImpl) readDayFromPathLocked(path string) (dayFile, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -115,7 +121,7 @@ func (s *Store) readDayFromPathLocked(path string) (dayFile, error) {
 	return current, nil
 }
 
-func (s *Store) writeDayLocked(dayKey string, current dayFile) error {
+func (s *StoreImpl) writeDayLocked(dayKey string, current dayFile) error {
 	var buf bytes.Buffer
 	if err := gob.NewEncoder(&buf).Encode(current); err != nil {
 		return err
@@ -124,7 +130,7 @@ func (s *Store) writeDayLocked(dayKey string, current dayFile) error {
 	return os.WriteFile(path, buf.Bytes(), 0o644)
 }
 
-func (s *Store) pruneLocked() error {
+func (s *StoreImpl) pruneLocked() error {
 	files, err := s.listFilesLocked()
 	if err != nil {
 		return err
@@ -140,7 +146,7 @@ func (s *Store) pruneLocked() error {
 	return nil
 }
 
-func (s *Store) listFilesLocked() ([]datedFile, error) {
+func (s *StoreImpl) listFilesLocked() ([]datedFile, error) {
 	entries, err := os.ReadDir(s.dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -159,10 +165,7 @@ func (s *Store) listFilesLocked() ([]datedFile, error) {
 		if err != nil {
 			continue
 		}
-		files = append(files, datedFile{
-			date: date,
-			path: filepath.Join(s.dir, entry.Name()),
-		})
+		files = append(files, datedFile{date: date, path: filepath.Join(s.dir, entry.Name())})
 	}
 
 	sort.Slice(files, func(i, j int) bool {

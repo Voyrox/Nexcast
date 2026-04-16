@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"nextcast/src/app"
+	nextcast "nextcast/src/core"
 	"strings"
 )
 
@@ -50,7 +50,7 @@ func (b *Backend) readPodMetrics(namespace string, deployment deploymentResponse
 	return totalCPU / float64(measuredPods), totalMem / float64(measuredPods), true
 }
 
-func (b *Backend) readPodTraffic(service app.ServiceConfig, pods []podResponse) float64 {
+func (b *Backend) readPodTraffic(service nextcast.ServiceConfig, pods []podResponse) float64 {
 	if strings.TrimSpace(service.MetricsPath) == "" {
 		return 0
 	}
@@ -66,7 +66,7 @@ func (b *Backend) readPodTraffic(service app.ServiceConfig, pods []podResponse) 
 			continue
 		}
 
-		snapshot, err := app.FetchTrafficMetric(fmt.Sprintf("http://%s:%d%s", pod.Status.PodIP, port, service.MetricsPath))
+		snapshot, err := nextcast.FetchTrafficMetric(fmt.Sprintf("http://%s:%d%s", pod.Status.PodIP, port, service.MetricsPath))
 		if err != nil {
 			continue
 		}

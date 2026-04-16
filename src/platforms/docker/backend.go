@@ -2,28 +2,24 @@ package docker
 
 import (
 	"fmt"
-	"nextcast/src/app"
+	nextcast "nextcast/src/core"
 )
 
 type Backend struct{}
 
-func NewBackend() *Backend {
-	return &Backend{}
-}
+func NewBackend() *Backend { return &Backend{} }
 
-func (b *Backend) Mode() app.BackendMode {
-	return app.BackendDocker
-}
+func (b *Backend) Mode() nextcast.BackendMode { return nextcast.BackendDocker }
 
-func (b *Backend) GetServiceState(service app.ServiceConfig) (app.LocalServiceState, error) {
+func (b *Backend) GetServiceState(service nextcast.ServiceConfig) (nextcast.LocalServiceState, error) {
 	containers, err := ListManagedContainers(service.ContainerPrefix)
 	if err != nil {
-		return app.LocalServiceState{}, err
+		return nextcast.LocalServiceState{}, err
 	}
 
 	stats, err := GetDockerStats(service.ContainerPrefix)
 	if err != nil {
-		return app.LocalServiceState{}, err
+		return nextcast.LocalServiceState{}, err
 	}
 
 	var cpuSum float64
@@ -44,7 +40,7 @@ func (b *Backend) GetServiceState(service app.ServiceConfig) (app.LocalServiceSt
 
 	for _, container := range containers {
 		for _, port := range HostPorts(container.Ports) {
-			snapshot, err := app.FetchTrafficMetric(fmt.Sprintf("http://127.0.0.1:%d%s", port, service.MetricsPath))
+			snapshot, err := nextcast.FetchTrafficMetric(fmt.Sprintf("http://127.0.0.1:%d%s", port, service.MetricsPath))
 			if err != nil {
 				continue
 			}
@@ -53,7 +49,7 @@ func (b *Backend) GetServiceState(service app.ServiceConfig) (app.LocalServiceSt
 		}
 	}
 
-	return app.LocalServiceState{
+	return nextcast.LocalServiceState{
 		ServiceName:     service.Name,
 		SystemID:        service.SystemID,
 		CurrentReplicas: len(containers),
@@ -64,7 +60,7 @@ func (b *Backend) GetServiceState(service app.ServiceConfig) (app.LocalServiceSt
 	}, nil
 }
 
-func (b *Backend) EnsureReplicaCount(service app.ServiceConfig, desired int) error {
+func (b *Backend) EnsureReplicaCount(service nextcast.ServiceConfig, desired int) error {
 	existing, err := ListManagedContainers(service.ContainerPrefix)
 	if err != nil {
 		return err

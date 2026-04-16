@@ -1,4 +1,4 @@
-package scaler
+package nextcast
 
 import (
 	"fmt"

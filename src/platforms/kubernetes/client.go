@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
-	"nextcast/src/shared"
+	"nextcast/src/util"
 	"os"
 	"strings"
 	"time"
@@ -80,7 +80,7 @@ func (c *apiClient) doJSON(method, apiPath string, query url.Values, body []byte
 		fullURL += "?" + query.Encode()
 	}
 
-	req, err := shared.NewRequest(method, fullURL, body)
+	req, err := util.NewRequest(method, fullURL, body)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (c *apiClient) doJSON(method, apiPath string, query url.Values, body []byte
 		req.Header.Set(key, value)
 	}
 
-	respBody, err := shared.Do(req, c.httpClient, 0)
+	respBody, err := util.ReadBody(req, c.httpClient, 0)
 	if err != nil {
 		return nil, fmt.Errorf("kubernetes api %s %s: %w", method, apiPath, err)
 	}

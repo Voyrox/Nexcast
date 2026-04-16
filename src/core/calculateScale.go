@@ -1,4 +1,4 @@
-package scaler
+package nextcast
 
 import "math"
 
@@ -69,15 +69,15 @@ func blendedRPS(currentRPS float64, history []float64) float64 {
 	return average
 }
 
-func (a *App) recordRPS(serviceName string, rps float64) []float64 {
-	a.mu.Lock()
-	defer a.mu.Unlock()
+func (n *Nexcast) recordRPS(serviceName string, rps float64) []float64 {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 
-	history := append(a.rpsHistory[serviceName], rps)
+	history := append(n.rpsHistory[serviceName], rps)
 	if len(history) > rpsHistoryLimit {
 		history = history[len(history)-rpsHistoryLimit:]
 	}
-	a.rpsHistory[serviceName] = history
+	n.rpsHistory[serviceName] = history
 
 	copyHistory := make([]float64, len(history))
 	copy(copyHistory, history)

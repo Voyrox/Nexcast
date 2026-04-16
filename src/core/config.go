@@ -1,4 +1,4 @@
-package scaler
+package nextcast
 
 import (
 	"fmt"
@@ -15,7 +15,7 @@ func getenv(key, fallback string) string {
 	return v
 }
 
-func parseBackendMode(raw string) (BackendMode, error) {
+func backendMode(raw string) (BackendMode, error) {
 	switch strings.TrimSpace(raw) {
 	case "", string(BackendDocker):
 		return BackendDocker, nil
@@ -37,8 +37,8 @@ func parseMetricsPolicy(raw string) (MetricsFallbackPolicy, error) {
 	}
 }
 
-func LoadRuntimeConfig() (RuntimeConfig, error) {
-	backend, err := parseBackendMode(getenv("BACKEND", string(BackendDocker)))
+func LoadConfig() (RuntimeConfig, error) {
+	backend, err := backendMode(getenv("BACKEND", string(BackendDocker)))
 	if err != nil {
 		return RuntimeConfig{}, err
 	}

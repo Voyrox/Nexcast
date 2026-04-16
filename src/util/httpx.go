@@ -1,4 +1,4 @@
-package shared
+package util
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ func NewRequest(method, rawURL string, body []byte) (*http.Request, error) {
 	return http.NewRequest(method, rawURL, bytes.NewReader(body))
 }
 
-func Do(req *http.Request, client *http.Client, expectedStatus int) ([]byte, error) {
+func ReadBody(req *http.Request, client *http.Client, expectedStatus int) ([]byte, error) {
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -39,8 +39,8 @@ func Do(req *http.Request, client *http.Client, expectedStatus int) ([]byte, err
 	return body, nil
 }
 
-func DoJSON(req *http.Request, client *http.Client, expectedStatus int, out any) error {
-	body, err := Do(req, client, expectedStatus)
+func ReadJSON(req *http.Request, client *http.Client, expectedStatus int, out any) error {
+	body, err := ReadBody(req, client, expectedStatus)
 	if err != nil || out == nil {
 		return err
 	}

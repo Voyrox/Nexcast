@@ -67,14 +67,11 @@ func initLoggers() {
 	errorLogger = log.New(os.Stderr, prefix("ERROR", ansiRed, stderrColor), flags)
 }
 
-// Init configures loggers and is safe to call multiple times.
 func Init() {
 	initOnce.Do(initLoggers)
 }
 
-func ensureInit() {
-	Init()
-}
+func ensureInit() { Init() }
 
 func Infof(format string, args ...any) {
 	ensureInit()

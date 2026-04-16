@@ -1,7 +1,7 @@
-package scaler
+package nextcast
 
 import (
-	nexhistory "nextcast/src/history"
+	"nextcast/src/history"
 	"sync"
 	"time"
 )
@@ -42,14 +42,14 @@ type servicePlan struct {
 	decision  scaleDecision
 }
 
-type App struct {
+type Nexcast struct {
 	config       RuntimeConfig
 	inventory    ServicesInventory
 	backend      Backend
 	startTime    time.Time
 	cooldowns    map[string]time.Time
 	rpsHistory   map[string][]float64
-	historyStore *nexhistory.Store
+	historyStore *history.StoreImpl
 	mu           sync.RWMutex
 }
 

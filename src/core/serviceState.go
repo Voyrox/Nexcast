@@ -1,4 +1,4 @@
-package scaler
+package nextcast
 
 func GetLocalServicesState(inventory ServicesInventory, backend Backend) ([]LocalServiceState, error) {
 	states := make([]LocalServiceState, 0, len(inventory.Services))
