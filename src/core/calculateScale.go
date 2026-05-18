@@ -2,34 +2,6 @@ package nextcast
 
 import "math"
 
-const rpsHistoryLimit = 5
-
-func calculateScaleRecommendation(service ServiceConfig, currentReplicas int, currentRPS float64, history []float64) scaleDecision {
-	predictedPeak := peakRPS(history)
-	blendedPeak := blendedRPS(currentRPS, history)
-	demandRPS := predictedPeak
-	if blendedPeak > demandRPS {
-		demandRPS = blendedPeak
-	}
-
-	recommended := calculateReplicaCount(service, demandRPS)
-	if recommended < service.MinReplicas {
-		recommended = service.MinReplicas
-	}
-	if recommended > service.MaxReplicas {
-		recommended = service.MaxReplicas
-	}
-	if currentReplicas < service.MinReplicas {
-		recommended = service.MinReplicas
-	}
-
-	return scaleDecision{
-		PredictedPeak:       predictedPeak,
-		BlendedPeak:         blendedPeak,
-		RecommendedReplicas: recommended,
-	}
-}
-
 func calculateReplicaCount(service ServiceConfig, demandRPS float64) int {
 	if demandRPS <= 0 {
 		return service.MinReplicas
@@ -41,45 +13,4 @@ func calculateReplicaCount(service ServiceConfig, demandRPS float64) int {
 	}
 
 	return int(math.Ceil(demandRPS / service.TargetPerNode))
-}
-
-func peakRPS(history []float64) float64 {
-	peak := 0.0
-	for _, sample := range history {
-		if sample > peak {
-			peak = sample
-		}
-	}
-	return peak
-}
-
-func blendedRPS(currentRPS float64, history []float64) float64 {
-	if len(history) == 0 {
-		return currentRPS
-	}
-
-	total := 0.0
-	for _, sample := range history {
-		total += sample
-	}
-	average := total / float64(len(history))
-	if currentRPS > average {
-		return currentRPS
-	}
-	return average
-}
-
-func (n *Nexcast) recordRPS(serviceName string, rps float64) []float64 {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	history := append(n.rpsHistory[serviceName], rps)
-	if len(history) > rpsHistoryLimit {
-		history = history[len(history)-rpsHistoryLimit:]
-	}
-	n.rpsHistory[serviceName] = history
-
-	copyHistory := make([]float64, len(history))
-	copy(copyHistory, history)
-	return copyHistory
 }

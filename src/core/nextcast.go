@@ -7,15 +7,17 @@ import (
 )
 
 func New(config RuntimeConfig, inventory ServicesInventory, backend Backend, startTime time.Time) *Nexcast {
-	return &Nexcast{
+	n := &Nexcast{
 		config:       config,
 		inventory:    inventory,
 		backend:      backend,
 		startTime:    startTime.UTC(),
 		cooldowns:    make(map[string]time.Time),
-		rpsHistory:   make(map[string][]float64),
+		hwPredictor:  NewHoltWintersPredictor(config.HwAlpha, config.HwBeta, config.HwGamma, config.HwDelta, config.HwHorizon),
 		historyStore: history.Store,
 	}
+	n.seedFromHistory()
+	return n
 }
 
 func (n *Nexcast) SelfAddr() string { return n.config.ListenAddr }
@@ -28,6 +30,40 @@ func (n *Nexcast) serviceNames() []string {
 		names = append(names, service.Name)
 	}
 	return names
+}
+
+func (n *Nexcast) seedFromHistory() {
+	if n.historyStore == nil {
+		return
+	}
+
+	resp, err := n.historyStore.Load()
+	if err != nil {
+		logx.Warnf("failed to load history for HW seeding: %v", err)
+		return
+	}
+
+	count := 0
+	for _, day := range resp.Days {
+		for _, snap := range day.Snapshots {
+			for _, svc := range snap.Services {
+				n.hwPredictor.Update(svc.ServiceName, svc.RPS, snap.Timestamp)
+				count++
+			}
+		}
+	}
+
+	if count > 0 {
+		logx.Infof("seeded HW predictor with %d historical observations", count)
+		for _, s := range n.inventory.Services {
+			if state, ok := n.hwPredictor.GetState(s.Name); ok {
+				logx.Infof("HW state for %s: level=%.2f trend=%.4f/hour rps_max=%.2f",
+					s.Name, state.Level, state.Trend, state.RPSMax)
+			}
+		}
+	} else {
+		logx.Infof("no historical data found for HW predictor (cold start)")
+	}
 }
 
 func (n *Nexcast) NodeInfo() NodeInfoResponse {
@@ -170,10 +206,25 @@ func (n *Nexcast) desiredReplicas(aggregate clusterServiceAggregate) scaleDecisi
 		return scaleDecision{DesiredReplicas: service.MinReplicas}
 	}
 
-	historySamples := n.recordRPS(service.Name, aggregate.TotalRPS)
-	decision := calculateScaleRecommendation(service, aggregate.TotalReplicas, aggregate.TotalRPS, historySamples)
+	n.hwPredictor.Update(service.Name, aggregate.TotalRPS, time.Now())
 
-	desired := decision.RecommendedReplicas
+	predictedDemand := n.hwPredictor.PredictPeak(service.Name, n.config.HwHorizon, time.Now())
+	if predictedDemand <= 0 {
+		predictedDemand = aggregate.TotalRPS
+	}
+
+	recommended := calculateReplicaCount(service, predictedDemand)
+	if recommended < service.MinReplicas {
+		recommended = service.MinReplicas
+	}
+	if recommended > service.MaxReplicas {
+		recommended = service.MaxReplicas
+	}
+	if aggregate.TotalReplicas < service.MinReplicas {
+		recommended = service.MinReplicas
+	}
+
+	desired := recommended
 	if desired > aggregate.TotalReplicas {
 		desired = clampInt(aggregate.TotalReplicas+service.ScaleUpStep, service.MinReplicas, service.MaxReplicas)
 	} else if desired < aggregate.TotalReplicas {
@@ -190,25 +241,31 @@ func (n *Nexcast) desiredReplicas(aggregate clusterServiceAggregate) scaleDecisi
 	n.mu.RUnlock()
 	if desired != aggregate.TotalReplicas && !lastScaleTime.IsZero() && time.Since(lastScaleTime) < n.config.Cooldown {
 		logx.Warnf("cooldown active for service=%s, skipping scale", service.Name)
-		decision.DesiredReplicas = aggregate.TotalReplicas
-		return decision
+		return scaleDecision{
+			DesiredReplicas:     aggregate.TotalReplicas,
+			PredictedDemand:     predictedDemand,
+			CurrentRPS:          aggregate.TotalRPS,
+			RecommendedReplicas: recommended,
+		}
 	}
 
-	logx.Eventf("service=%s current=%d cpu=%.2f mem=%.2f rps=%.2f metrics_ready=%t predicted_peak=%.2f blended_peak=%.2f recommended=%d adjusted=%d",
+	logx.Eventf("service=%s current=%d cpu=%.2f mem=%.2f rps=%.2f predicted_demand=%.2f recommended=%d adjusted=%d",
 		service.Name,
 		aggregate.TotalReplicas,
 		aggregate.WeightedCPU,
 		aggregate.WeightedMem,
 		aggregate.TotalRPS,
-		aggregate.MetricsReady,
-		decision.PredictedPeak,
-		decision.BlendedPeak,
-		decision.RecommendedReplicas,
+		predictedDemand,
+		recommended,
 		desired,
 	)
 
-	decision.DesiredReplicas = desired
-	return decision
+	return scaleDecision{
+		DesiredReplicas:     desired,
+		PredictedDemand:     predictedDemand,
+		CurrentRPS:          aggregate.TotalRPS,
+		RecommendedReplicas: recommended,
+	}
 }
 
 func (n *Nexcast) emitObservation(timestamp time.Time, aggregate clusterServiceAggregate, decision scaleDecision) {
@@ -226,8 +283,8 @@ func (n *Nexcast) emitObservation(timestamp time.Time, aggregate clusterServiceA
 		MemoryPercent:       aggregate.WeightedMem,
 		RPS:                 aggregate.TotalRPS,
 		MetricsReady:        aggregate.MetricsReady,
-		PredictedPeak:       decision.PredictedPeak,
-		BlendedPeak:         decision.BlendedPeak,
+		PredictedDemand:     decision.PredictedDemand,
+		CurrentRPS:          decision.CurrentRPS,
 		RecommendedReplicas: decision.RecommendedReplicas,
 		AppliedReplicas:     decision.DesiredReplicas,
 	}

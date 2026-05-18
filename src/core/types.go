@@ -31,9 +31,9 @@ type clusterServiceAggregate struct {
 }
 
 type scaleDecision struct {
-	DesiredReplicas     int
-	PredictedPeak       float64
-	BlendedPeak         float64
+	DesiredReplicas      int
+	PredictedDemand      float64
+	CurrentRPS           float64
 	RecommendedReplicas int
 }
 
@@ -48,7 +48,7 @@ type Nexcast struct {
 	backend      Backend
 	startTime    time.Time
 	cooldowns    map[string]time.Time
-	rpsHistory   map[string][]float64
+	hwPredictor  *HoltWintersPredictor
 	historyStore *history.StoreImpl
 	mu           sync.RWMutex
 }
@@ -87,6 +87,11 @@ type RuntimeConfig struct {
 	MetricsPolicy  MetricsFallbackPolicy
 	CheckInterval  time.Duration
 	Cooldown       time.Duration
+	HwAlpha        float64
+	HwBeta         float64
+	HwGamma        float64
+	HwDelta        float64
+	HwHorizon      int
 }
 
 type ObservationRequest struct {
@@ -99,8 +104,8 @@ type ObservationRequest struct {
 	MemoryPercent       float64   `json:"memory_percent"`
 	RPS                 float64   `json:"rps,omitempty"`
 	MetricsReady        bool      `json:"metrics_ready"`
-	PredictedPeak       float64   `json:"predicted_peak"`
-	BlendedPeak         float64   `json:"blended_peak"`
+	PredictedDemand     float64   `json:"predicted_demand"`
+	CurrentRPS          float64   `json:"current_rps"`
 	RecommendedReplicas int       `json:"recommended_replicas"`
 	AppliedReplicas     int       `json:"applied_replicas"`
 }

@@ -3,6 +3,7 @@ package nextcast
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -58,6 +59,15 @@ func LoadConfig() (RuntimeConfig, error) {
 		return RuntimeConfig{}, fmt.Errorf("invalid COOLDOWN: %w", err)
 	}
 
+	hwAlpha, _ := strconv.ParseFloat(getenv("HW_ALPHA", "0.3"), 64)
+	hwBeta, _ := strconv.ParseFloat(getenv("HW_BETA", "0.1"), 64)
+	hwGamma, _ := strconv.ParseFloat(getenv("HW_GAMMA", "0.1"), 64)
+	hwDelta, _ := strconv.ParseFloat(getenv("HW_DELTA", "0.05"), 64)
+	hwHorizon, _ := strconv.Atoi(getenv("HW_HORIZON", "6"))
+	if hwHorizon < 1 {
+		hwHorizon = 6
+	}
+
 	config := RuntimeConfig{
 		Backend:        backend,
 		ListenAddr:     getenv("LISTEN_ADDR", ":8081"),
@@ -67,6 +77,11 @@ func LoadConfig() (RuntimeConfig, error) {
 		MetricsPolicy:  metricsPolicy,
 		CheckInterval:  interval,
 		Cooldown:       cooldown,
+		HwAlpha:        hwAlpha,
+		HwBeta:         hwBeta,
+		HwGamma:        hwGamma,
+		HwDelta:        hwDelta,
+		HwHorizon:      hwHorizon,
 	}
 
 	if strings.TrimSpace(config.ListenAddr) == "" {
