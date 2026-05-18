@@ -197,3 +197,8 @@ Traffic metrics behavior:
 - Kubernetes mode scrapes each pod via `podIP:metrics_port + metrics_path`
 - the built-in example app exposes `GET /metrics` with a rolling `rps` field
 - Nexcast uses recent observed `rps` samples to smooth demand before sizing replicas
+
+## TODO
+
+- [ ] **Grafana dashboard** — Expose a `/metrics` endpoint with Prometheus-formatted counters and histograms (scale events, HW state, prediction accuracy) so operators can build a Grafana dashboard
+- [ ] **Helm chart** — Package Nexcast as a Helm chart with configurable env vars, resource limits, service accounts, and multi-namespace support for easier K8s deployment
