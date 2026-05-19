@@ -1,0 +1,12 @@
+{{- if and (not .Values.services.existingConfigMap) (not .Values.services.existingSecret) -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "nexcast.fullname" . }}-services
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "nexcast.labels" . | indent 4 }}
+data:
+  services.yaml: |
+{{ .Values.services.yaml | indent 4 }}
+{{- end -}}

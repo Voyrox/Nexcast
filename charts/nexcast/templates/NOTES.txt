@@ -1,0 +1,12 @@
+Nexcast has been installed in namespace {{ .Release.Namespace }}.
+
+API endpoint (inside cluster):
+  http://{{ include "nexcast.fullname" . }}.{{ .Release.Namespace }}.svc:{{ .Values.service.port }}
+
+Port-forward for local access:
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "nexcast.fullname" . }} {{ .Values.service.port }}:{{ .Values.service.port }}
+
+To update the services inventory:
+  1) Edit your values and re-upgrade:
+     helm upgrade {{ .Release.Name }} {{ .Chart.Name }} -n {{ .Release.Namespace }} -f values.yaml
+  2) Or point to an existing ConfigMap/Secret via values.services.existingConfigMap / values.services.existingSecret.

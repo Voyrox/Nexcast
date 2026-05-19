@@ -30,12 +30,14 @@ $$
   - [Setup](#setup)
     - [Update deployed instances](#update-deployed-instances)
     - [Single instance](#single-instance)
+    - [Helm (Kubernetes)](#helm-kubernetes)
   - [Example Workload](#example-workload)
     - [Docker Example](#docker-example)
     - [Kubernetes Example](#kubernetes-example)
   - [Docker and Kubernetes config](#docker-and-kubernetes-config)
     - [Docker](#docker)
     - [Kubernetes](#kubernetes)
+  - [TODO](#todo)
 
 ## Setup
 
@@ -90,6 +92,24 @@ kubectl get pods -n default -l app=nextcast -o wide
 kubectl apply -f nextcast.yaml
 kubectl get deploy,pods -n default -l app=nextcast -o wide
 ```
+
+### Helm (Kubernetes)
+
+```bash
+helm install nexcast ./charts/nexcast -n nexcast --create-namespace
+```
+
+Provide your service inventory via values:
+
+```bash
+helm upgrade --install nexcast ./charts/nexcast -n nexcast \
+  --set-string services.yaml="$(Get-Content -Raw services.yaml)"
+```
+
+Notes:
+
+- Default RBAC is cluster-scoped so Nexcast can scale Deployments across multiple namespaces.
+- To use an existing ConfigMap instead, set `services.existingConfigMap` (and optionally `services.existingKey`).
 
 ## Example Workload
 
@@ -201,4 +221,3 @@ Traffic metrics behavior:
 ## TODO
 
 - [ ] **Grafana dashboard** — Expose a `/metrics` endpoint with Prometheus-formatted counters and histograms (scale events, HW state, prediction accuracy) so operators can build a Grafana dashboard
-- [ ] **Helm chart** — Package Nexcast as a Helm chart with configurable env vars, resource limits, service accounts, and multi-namespace support for easier K8s deployment

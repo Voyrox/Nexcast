@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "nexcast.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "nexcast.labels" . | indent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+{{ include "nexcast.selectorLabels" . | indent 6 }}
+  template:
+    metadata:
+      labels:
+{{ include "nexcast.selectorLabels" . | indent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "nexcast.serviceAccountName" . }}
+      containers:
+        - name: nexcast
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: 8081
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+          env:
+            - name: BACKEND
+              value: {{ .Values.config.backend | quote }}
+            - name: LISTEN_ADDR
+              value: {{ .Values.config.listenAddr | quote }}
+            - name: SERVICES_FILE
+              value: /etc/nexcast/services.yaml
+            - name: K8S_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: CHECK_INTERVAL
+              value: {{ .Values.config.checkInterval | quote }}
+            - name: COOLDOWN
+              value: {{ .Values.config.cooldown | quote }}
+            - name: METRICS_FALLBACK_POLICY
+              value: {{ .Values.config.metricsFallbackPolicy | quote }}
+            {{- if .Values.config.observationUrl }}
+            - name: OBSERVATION_URL
+              value: {{ .Values.config.observationUrl | quote }}
+            {{- end }}
+            {{- with .Values.config.holtWinters.alpha }}
+            {{- if . }}
+            - name: HW_ALPHA
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.config.holtWinters.beta }}
+            {{- if . }}
+            - name: HW_BETA
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.config.holtWinters.gamma }}
+            {{- if . }}
+            - name: HW_GAMMA
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.config.holtWinters.delta }}
+            {{- if . }}
+            - name: HW_DELTA
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.config.holtWinters.horizon }}
+            {{- if . }}
+            - name: HW_HORIZON
+              value: {{ . | quote }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.extraEnv }}
+{{ toYaml . | indent 12 }}
+            {{- end }}
+          volumeMounts:
+            - name: services
+              mountPath: /etc/nexcast
+              readOnly: true
+      volumes:
+        - name: services
+          {{- if .Values.services.existingConfigMap }}
+          configMap:
+            name: {{ .Values.services.existingConfigMap }}
+            items:
+              - key: {{ .Values.services.existingKey | quote }}
+                path: services.yaml
+          {{- else if .Values.services.existingSecret }}
+          secret:
+            secretName: {{ .Values.services.existingSecret }}
+            items:
+              - key: {{ .Values.services.existingSecretKey | quote }}
+                path: services.yaml
+          {{- else }}
+          configMap:
+            name: {{ include "nexcast.fullname" . }}-services
+            items:
+              - key: services.yaml
+                path: services.yaml
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+{{ toYaml . | indent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+{{ toYaml . | indent 8 }}
+      {{- end }}

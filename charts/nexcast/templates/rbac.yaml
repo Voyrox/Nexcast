@@ -1,0 +1,84 @@
+{{- $saName := include "nexcast.serviceAccountName" . -}}
+{{- $scope := default "cluster" .Values.rbac.scope -}}
+
+{{- if eq $scope "cluster" -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "nexcast.fullname" . }}
+  labels:
+{{ include "nexcast.labels" . | indent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "update", "patch"]
+{{- if .Values.rbac.enableMetricsApi }}
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "nexcast.fullname" . }}
+  labels:
+{{ include "nexcast.labels" . | indent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $saName }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "nexcast.fullname" . }}
+
+{{- else if eq $scope "namespaced" -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "nexcast.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "nexcast.labels" . | indent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list"]
+  - apiGroups: ["apps"]
+    resources: ["deployments/scale"]
+    verbs: ["get", "update", "patch"]
+{{- if .Values.rbac.enableMetricsApi }}
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "nexcast.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+{{ include "nexcast.labels" . | indent 4 }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ $saName }}
+    namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "nexcast.fullname" . }}
+
+{{- else -}}
+{{- fail "rbac.scope must be 'cluster' or 'namespaced'" -}}
+{{- end -}}

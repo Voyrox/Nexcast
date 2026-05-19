@@ -1,0 +1,65 @@
+replicaCount: 1
+
+image:
+  repository: glitchedking/netcast
+  tag: latest
+  pullPolicy: Always
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+
+rbac:
+  # cluster allows scaling deployments across namespaces
+  scope: cluster
+  # If you don't have the metrics.k8s.io API installed, you can disable the permission.
+  enableMetricsApi: true
+
+service:
+  type: ClusterIP
+  port: 8081
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+config:
+  backend: kubernetes
+  listenAddr: ":8081"
+  checkInterval: 20s
+  cooldown: 60s
+  metricsFallbackPolicy: scale-up-only
+  observationUrl: ""
+
+  holtWinters:
+    alpha: ""
+    beta: ""
+    gamma: ""
+    delta: ""
+    horizon: ""
+
+services:
+  # If set, Nexcast will mount an existing ConfigMap as /etc/nexcast/services.yaml
+  existingConfigMap: ""
+  existingKey: services.yaml
+  # If set, Nexcast will mount an existing Secret as /etc/nexcast/services.yaml
+  existingSecret: ""
+  existingSecretKey: services.yaml
+  # Inline YAML inventory when not using existing ConfigMap/Secret.
+  # This should match the format in the repo's services.yaml.
+  yaml: |
+    services: []
+
+extraEnv: []
