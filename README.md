@@ -7,6 +7,11 @@ Nexcast supports two backends:
 - `docker` for scaling locally-managed Docker containers
 - `kubernetes` for scaling existing Kubernetes Deployments
 
+Replica recommendations are computed in two steps:
+
+1. **Forecast demand**: Nexcast uses a Holt-Winters model (level + trend + hourly/weekly seasonality) to predict near-term peak traffic. The peak predicted request rate over the next horizon is used as `RPS_target`.
+2. **Size replicas**: convert `RPS_target` into required CPU cores, then cores into replica count:
+
 $$
 \text{Cores}_{\text{total}} = \frac{\beta \cdot \text{RPS}_{\text{target}}}{\text{utilization}_{\text{target}} - a}
 $$
@@ -15,6 +20,7 @@ $$
 \text{Instances} = \left\lceil \frac{\text{Cores}_{\text{total}}}{\text{cores}_{\text{instance}}} \right\rceil
 $$
 
+- `RPS_target` is the forecast peak request rate over the near-term horizon.
 - `beta` is the service's CPU cost per request rate unit; higher `beta` means each extra unit of traffic consumes more CPU.
 - `a` is a fixed utilization offset that accounts for baseline overhead or inefficiency before useful traffic work is done.
 - `utilization_target` is the desired safe operating utilization for the service, usually kept below 1.0 to leave headroom.
