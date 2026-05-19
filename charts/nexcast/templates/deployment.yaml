@@ -14,16 +14,30 @@ spec:
     metadata:
       labels:
 {{ include "nexcast.selectorLabels" . | indent 8 }}
-      {{- with .Values.podAnnotations }}
       annotations:
+        checksum/services: {{ toJson .Values.services | sha256sum }}
+        checksum/dotenv: {{ toJson .Values.dotenv | sha256sum }}
+      {{- with .Values.podAnnotations }}
 {{ toYaml . | indent 8 }}
       {{- end }}
     spec:
       serviceAccountName: {{ include "nexcast.serviceAccountName" . }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: {{ .Values.securityContext.runAsUser }}
+        runAsGroup: {{ .Values.securityContext.runAsGroup }}
+        fsGroup: {{ .Values.securityContext.fsGroup }}
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: nexcast
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
           ports:
             - name: http
               containerPort: 8081
@@ -87,6 +101,12 @@ spec:
             - name: services
               mountPath: /etc/nexcast
               readOnly: true
+            {{- if .Values.dotenv.enabled }}
+            - name: dotenv
+              mountPath: /app/.env
+              subPath: .env
+              readOnly: true
+            {{- end }}
       volumes:
         - name: services
           {{- if .Values.services.existingConfigMap }}
@@ -108,6 +128,14 @@ spec:
               - key: services.yaml
                 path: services.yaml
           {{- end }}
+        {{- if .Values.dotenv.enabled }}
+        - name: dotenv
+          configMap:
+            name: {{ include "nexcast.fullname" . }}-dotenv
+            items:
+              - key: .env
+                path: .env
+        {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
 {{ toYaml . | indent 8 }}

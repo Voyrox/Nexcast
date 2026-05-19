@@ -103,13 +103,23 @@ Provide your service inventory via values:
 
 ```bash
 helm upgrade --install nexcast ./charts/nexcast -n nexcast \
-  --set-string services.yaml="$(Get-Content -Raw services.yaml)"
+  --set-file services.yaml=services.yaml
 ```
 
-Notes:
+Make sure the `services.yaml` you provide matches the **Kubernetes** inventory shape (it must include `deployment_name`, and usually `namespace`):
 
-- Default RBAC is cluster-scoped so Nexcast can scale Deployments across multiple namespaces.
-- To use an existing ConfigMap instead, set `services.existingConfigMap` (and optionally `services.existingKey`).
+```yaml
+services:
+  - name: api
+    system_id: 0
+    namespace: default
+    deployment_name: my-deployment
+    min_replicas: 1
+    max_replicas: 10
+    target_per_node: 65.0
+    scale_up_step: 2
+    scale_down_step: 1
+```
 
 ## Example Workload
 
