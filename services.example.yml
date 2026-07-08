@@ -10,7 +10,7 @@ configs:
     maxReplicas: 30
     dryRun: true
     dockerComposeFile: docker-compose.yml
-    dockerService: api
+    dockerService: nginx
     kubernetesNamespace: default
     kubernetesDeployment: ""
 
@@ -25,4 +25,4 @@ configs:
     dockerComposeFile: ""
     dockerService: ""
     kubernetesNamespace: production
-    kubernetesDeployment: demand-api
+    kubernetesDeployment: redis

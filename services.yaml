@@ -1,8 +1,8 @@
 services:
-  - name: api
+  - name: nginx
     system_id: 0
-    image_name: example-server:latest
-    container_prefix: nextcast-api
+    image_name: nginx:1.27
+    container_prefix: nextcast-nginx
     port_base: 18080
     metrics_path: /metrics
     min_replicas: 1
@@ -15,10 +15,10 @@ services:
     a: 0.10
     cores_instance: 0.50
 
-  - name: worker
+  - name: redis
     system_id: 1
-    image_name: example-server:latest
-    container_prefix: nextcast-worker
+    image_name: redis:7
+    container_prefix: nextcast-redis
     port_base: 19080
     metrics_path: /metrics
     min_replicas: 1

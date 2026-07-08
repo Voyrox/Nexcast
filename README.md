@@ -160,7 +160,6 @@ At a high level, Nexcast:
 | `src/api/server.go` | HTTP API for `/nodeInfo`, `/servicesState`, and `/history` |
 | `history/` | Binary gob history snapshots with a rolling window |
 | `charts/nexcast/` | Helm chart for Kubernetes deployment |
-| `example/` | Example workloads and manifests |
 | `Tensorflow/` | Optional TensorFlow/FastAPI prediction components |
 | `v2/` | Standalone Python Holt-Winters implementation and validation scripts |
 
@@ -297,10 +296,10 @@ The `services.yaml` schema differs by backend.
 
 ```yaml
 services:
-  - name: api
+  - name: nginx
     system_id: 0
-    image_name: example-server:latest
-    container_prefix: nexcast-api
+    image_name: nginx:1.27
+    container_prefix: nexcast-nginx
     port_base: 18080
     metrics_path: /metrics
     min_replicas: 1
@@ -318,10 +317,10 @@ services:
 
 ```yaml
 services:
-  - name: api
+  - name: redis
     system_id: 0
     namespace: default
-    deployment_name: nexcast-example
+    deployment_name: redis
     min_replicas: 1
     max_replicas: 10
     target_per_node: 65.0
@@ -334,12 +333,6 @@ services:
 Kubernetes mode requires `deployment_name`. `namespace` defaults to `K8S_NAMESPACE` if omitted.
 
 ## Running with Docker
-
-Build the sample app image:
-
-```bash
-docker build -t example-server:latest ./example/docker
-```
 
 Create `services.yaml` using the Docker inventory shape, then run:
 
@@ -356,13 +349,6 @@ Nexcast will:
 - expose state through the HTTP API
 
 ## Running with Kubernetes
-
-Apply the example workload:
-
-```bash
-docker build -t example-server:latest ./example/docker
-kubectl apply -f example/kubernetes/kubernetes.yaml
-```
 
 Deploy Nexcast directly:
 
@@ -531,14 +517,14 @@ Nexcast stores rolling history in `history/`. Confirm the process has permission
 - `beta`, `a`, `utilization_target`, and `cores_instance` should be tuned with load testing
 - Kubernetes and Docker inventory shapes are different
 - Missing metrics can reduce scaling precision
-- The built-in examples are demonstration workloads, not production templates
+- The bundled sample configs are demonstration templates, not production templates
 - Some older files and examples may use the historical `nextcast` spelling
 
 ## Roadmap
 
 - [ ] Prometheus-formatted `/metrics` endpoint
 - [ ] Grafana dashboard for scale events, forecast accuracy, and service state
-- [ ] More complete example workloads
+- [ ] More complete deployment examples
 - [ ] Expanded test coverage for backend adapters and config parsing
 - [ ] Better validation errors for malformed `services.yaml`
 - [ ] Load-testing guide for estimating `beta`, `a`, and `cores_instance`
